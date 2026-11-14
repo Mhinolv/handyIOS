@@ -48,11 +48,13 @@ public enum DictationProtocolError: Error, Equatable {
 /// Delivery is at least once until acknowledgement, not an atomic text-editor transaction.
 /// Every operation clears expired data before it reads or changes the slot. Clients must
 /// poll snapshot while active and on resume. No background timer runs in this library.
-/// Capture has three minutes from startRecording, with an inclusive end boundary.
+/// Capture has three minutes from startRecording. A short grace period permits completion after timer delay.
 /// startTranscription must follow capture and gives transcription a separate two-minute window.
 /// The app must stop capture at its deadline. The protocol does not control the microphone.
 public final class DictationSession {
     public static let maximumDictationDuration: TimeInterval = 180
+    public static let captureStopMargin: TimeInterval = 1
+    public static let captureCompletionGrace: TimeInterval = 2
     public static let maximumTranscriptionDuration: TimeInterval = 120
     public static let unclaimedResultLifetime: TimeInterval = 900
 
@@ -90,6 +92,13 @@ public final class DictationSession {
 
     @discardableResult
     public func startTranscription(requestID: UUID) throws -> Bool {
+        try transition(requestID, from: .recording, to: .transcribing)
+    }
+
+    /// Only the app that owns bounded capture may call this after it releases the microphone.
+    /// Timer delivery can follow the deadline. Preserve captured audio without reviving a replaced request.
+    @discardableResult
+    public func finishCapture(requestID: UUID) throws -> Bool {
         try transition(requestID, from: .recording, to: .transcribing)
     }
 
@@ -158,8 +167,10 @@ public final class DictationSession {
             var slot = try data.map { try JSONDecoder().decode(DictationSnapshot.self, from: $0) } ?? .idle
             guard slot.version == 1 else { throw DictationProtocolError.unsupportedVersion(slot.version) }
             if let expiry = slot.expiresAt {
-                // A full-length capture can enter transcription at exactly its deadline.
-                let expired = slot.state == .recording ? clock.now > expiry : clock.now >= expiry
+                // Keyboard polls must preserve the slot while the app releases capture.
+                let expired = slot.state == .recording
+                    ? clock.now > expiry.addingTimeInterval(Self.captureCompletionGrace)
+                    : clock.now >= expiry
                 if expired { slot = .idle }
             }
             let result = try body(&slot)
