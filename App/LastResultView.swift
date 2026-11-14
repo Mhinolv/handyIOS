@@ -16,6 +16,15 @@ struct LastResultView: View {
     @State private var showDiscard = false
     @State private var storageError: String?
 
+    #if DEBUG
+    private var snapshotResult = false
+    init(snapshot: LastResult? = nil, snapshotCopied: Bool = false) {
+        _copied = State(initialValue: snapshotCopied)
+        _result = State(initialValue: snapshot)
+        snapshotResult = snapshot != nil
+    }
+    #endif
+
     var body: some View {
         Group {
             if let result {
@@ -53,13 +62,18 @@ struct LastResultView: View {
                             Button("Show All") { expanded = true }
                         }
                         HStack {
-                            Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") {
-                                copy(result)
+                            Button { copy(result) } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                    Text(copied ? "Copied" : "Copy")
+                                }
                             }
                             .buttonStyle(.bordered)
-                            Button("Discard", systemImage: "trash") {
+                            Button {
                                 discardTarget = result
                                 showDiscard = true
+                            } label: {
+                                HStack(spacing: 6) { Image(systemName: "trash"); Text("Discard") }
                             }
                             .buttonStyle(.bordered).tint(.red)
                         }
@@ -99,6 +113,9 @@ struct LastResultView: View {
     }
 
     private func refresh() {
+        #if DEBUG
+        if snapshotResult { return }
+        #endif
         do {
             if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
             let latest = try session?.lastResult()

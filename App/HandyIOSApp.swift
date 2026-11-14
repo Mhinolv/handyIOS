@@ -8,6 +8,19 @@ struct HandyIOSApp: App {
 
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if let state = SnapshotState.requested {
+                SnapshotHost(state: state)
+            } else {
+                liveContent
+            }
+            #else
+            liveContent
+            #endif
+        }
+    }
+
+    private var liveContent: some View {
             ContentView()
             .fullScreenCover(item: $dictation) { DictationView(controller: $0) }
             .onOpenURL { url in
@@ -41,6 +54,5 @@ struct HandyIOSApp: App {
             } message: {
                 Text(handoffError ?? "")
             }
-        }
     }
 }

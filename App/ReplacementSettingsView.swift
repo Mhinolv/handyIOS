@@ -27,6 +27,10 @@ struct ReplacementSettingsView: View {
     @Bindable var model: ReplacementSettingsModel
     @State private var editing: ReplacementRule?
 
+    #if DEBUG
+    var snapshotSheet = false
+    #endif
+
     var body: some View {
         List {
             Section {
@@ -39,6 +43,7 @@ struct ReplacementSettingsView: View {
                         }
                         .foregroundStyle(.primary)
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel("Replace \(rule.phrase) with \(rule.replacement)")
                 }
                 .onDelete { offsets in
@@ -68,6 +73,11 @@ struct ReplacementSettingsView: View {
             }
         }
         .navigationTitle("Replacements")
+        .onAppear {
+            #if DEBUG
+            if snapshotSheet { editing = model.rules.first ?? ReplacementRule(phrase: "", replacement: "") }
+            #endif
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { EditButton() }
             ToolbarItem(placement: .topBarTrailing) {
@@ -132,7 +142,11 @@ private struct ReplacementRuleEditor: View {
             .onAppear {
                 phrase = rule.phrase
                 replacement = rule.replacement
+                #if DEBUG
+                phraseFocused = SnapshotState.requested == nil
+                #else
                 phraseFocused = true
+                #endif
             }
         }
     }

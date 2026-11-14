@@ -4,24 +4,43 @@ import SwiftUI
 struct ModelDownloadView: View {
     @ObservedObject var model: ModelDownloadManager
 
+    #if DEBUG
+    var snapshotState: ModelDownloadState? = nil
+    #endif
+    private var state: ModelDownloadState {
+        #if DEBUG
+        if let snapshotState { return snapshotState }
+        #endif
+        return model.state
+    }
+
+    private var availableBytes: Int64 {
+        #if DEBUG
+        if snapshotState != nil { return 12_000_000_000 }
+        #endif
+        return model.availableBytes
+    }
+
     var body: some View {
         List {
             Section {
                 Text("Parakeet TDT 0.6B v3").font(.headline)
                 Text("Speech model. Runs on this iPhone.").font(.subheadline).foregroundStyle(.secondary)
                 LabeledContent("Download size", value: model.manifest.isConfigured ? bytes(model.manifest.totalBytes) : "Not configured")
-                LabeledContent("Available", value: bytes(model.availableBytes))
+                LabeledContent("Available", value: bytes(availableBytes))
             }
             Section {
                 status
-                if case .downloading = model.state {
+                if case .downloading = state {
                     Button { model.cancel() } label: {
                         Text("Cancel").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
-                } else if model.state != .checking && model.state != .ready {
-                    Button(model.state == .notDownloaded ? "Download" : "Retry") { model.start() }
+                } else if state != .checking && state != .ready {
+                    Button { model.start() } label: {
+                        Text(state == .notDownloaded ? "Download" : "Retry").frame(maxWidth: .infinity)
+                    }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
                         .frame(maxWidth: .infinity)
@@ -29,7 +48,7 @@ struct ModelDownloadView: View {
                 }
             }
             #if DEBUG
-            SampleTranscriptionSection(isReady: model.state == .ready)
+            if snapshotState == nil { SampleTranscriptionSection(isReady: state == .ready) }
             #endif
             Section {
                 NavigationLink("Acknowledgements") { ModelNoticesView() }
@@ -39,7 +58,7 @@ struct ModelDownloadView: View {
     }
 
     @ViewBuilder private var status: some View {
-        switch model.state {
+        switch state {
         case .notDownloaded: EmptyView()
         case let .downloading(received, total):
             ProgressView(value: Double(received), total: Double(max(1, total)))

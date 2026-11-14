@@ -48,7 +48,8 @@ final class ManualKeyboardView: UIStackView {
             }
             addArrangedSubview(row(keys))
         }
-        configure(globe, title: "🌐", label: "Next Keyboard")
+        configure(globe, title: "", label: "Next Keyboard")
+        globe.setImage(UIImage(systemName: "globe"), for: .normal)
         configure(mic, title: "", label: "Dictation")
         mic.addAction(UIAction { [weak self] _ in self?.showDictation() }, for: .touchUpInside)
         let space = button("space", label: "Space") { [weak self] in self?.insert(" ") }

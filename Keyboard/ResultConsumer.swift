@@ -35,6 +35,13 @@ final class ResultConsumer {
         stack.insertArrangedSubview(chip, at: 1)
     }
 
+    #if DEBUG
+    func showSnapshot(text: String) {
+        preview.text = String(text.prefix(30)) + "…"
+        chip.isHidden = false
+    }
+    #endif
+
     private func focus(_ proxy: any UITextDocumentProxy) -> DeliveryFocus {
         DeliveryFocus(document: proxy.documentIdentifier, before: proxy.documentContextBeforeInput,
                       after: proxy.documentContextAfterInput)

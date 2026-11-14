@@ -20,6 +20,8 @@ targets:
     type: application
     platform: iOS
     sources:
+      - path: Keyboard
+        includes: ["KeyboardViewController.swift", "ManualKeyboardView.swift", "KeyboardAppLauncher.swift", "ResultConsumer.swift"]
       - path: App
         excludes: ["Info.plist", "*.entitlements"]
     info:
@@ -40,6 +42,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mhinolv.handyios
+      configs:
+        Release:
+          EXCLUDED_SOURCE_FILE_NAMES: "KeyboardViewController.swift ManualKeyboardView.swift KeyboardAppLauncher.swift ResultConsumer.swift"
     dependencies:
       - package: HandyKit
       - package: FluidAudio
