@@ -24,6 +24,9 @@ targets:
       properties:
         CFBundleDisplayName: Handy
         UILaunchScreen: {}
+        CFBundleURLTypes:
+          - CFBundleURLName: com.mhinolv.handyios.dictation
+            CFBundleURLSchemes: [handyios]
     entitlements:
       path: App/HandyIOS.entitlements
       properties:
@@ -53,7 +56,7 @@ targets:
             IsASCIICapable: false
             PrefersRightToLeft: false
             PrimaryLanguage: en-US
-            RequestsOpenAccess: false
+            RequestsOpenAccess: true
     entitlements:
       path: Keyboard/HandyKeyboard.entitlements
       properties:
