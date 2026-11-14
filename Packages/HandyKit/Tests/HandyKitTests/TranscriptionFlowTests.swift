@@ -101,6 +101,24 @@ final class TranscriptionFlowTests: XCTestCase {
         XCTAssertEqual(try session.snapshot().state, .ready)
     }
 
+    struct Rules: ReplacementRuleStorage {
+        func load() -> [ReplacementRule] { [ReplacementRule(phrase: "hello", replacement: "Hi there")] }
+        func save(_ rules: [ReplacementRule]) throws {}
+    }
+
+    func testReplacementsReachPublishedResultAndDisplayedText() async throws {
+        let session = DictationSession(storage: DictationSessionTests.Storage())
+        let id = try session.request().id
+        _ = try session.startRecording(requestID: id)
+        let flow = TranscriptionFlow(asr: ASR(), background: Background(), session: session, id: id,
+                                     replacements: Rules())
+        flow.prepare()
+        _ = try session.finishCapture(requestID: id)
+        await flow.transcribe(samples: [0.1])
+        XCTAssertEqual(try session.snapshot().text, "Hi there")
+        XCTAssertEqual(flow.text, "Hi there")
+    }
+
     func testBackgroundBeginsBeforeCaptureFinishesAndEndsOnSuccess() async throws {
         let session = DictationSession(storage: DictationSessionTests.Storage())
         let id = try session.request().id

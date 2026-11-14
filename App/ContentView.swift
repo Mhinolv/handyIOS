@@ -7,11 +7,19 @@ struct ContentView: View {
 
     @AppStorage("hasShownKeyboardSetup") private var hasShownSetup = false
     @State private var showSetup = false
+    @State private var replacements = ReplacementSettingsModel()
 
     var body: some View {
         NavigationStack {
             List {
                 Section("Settings") {
+                    NavigationLink {
+                        ReplacementSettingsView(model: replacements)
+                    } label: {
+                        LabeledContent { Text("\(replacements.rules.count)") } label: {
+                            Label("Replacements", systemImage: "arrow.left.arrow.right")
+                        }
+                    }
                     NavigationLink {
                         SilenceSettingsView()
                     } label: {

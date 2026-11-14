@@ -17,6 +17,7 @@ public final class TranscriptionFlow {
     public private(set) var error: String?
     public private(set) var retainedAudio: [Float] = []
     public private(set) var recovery: DictationRecovery?
+    private let replacements: any ReplacementRuleStorage
     private let asr: any BatchASR
     private let background: any TranscriptionBackgroundTask
     private let session: DictationSession
@@ -26,7 +27,9 @@ public final class TranscriptionFlow {
     private var worker: Task<ASRTranscription, Error>?
 
     public init(asr: any BatchASR, background: any TranscriptionBackgroundTask,
-                session: DictationSession, id: UUID) {
+                session: DictationSession, id: UUID,
+                replacements: any ReplacementRuleStorage = UserDefaultsReplacementStorage.appDefault()) {
+        self.replacements = replacements
         self.asr = asr
         self.background = background
         self.session = session
@@ -68,11 +71,12 @@ public final class TranscriptionFlow {
                 finishFailure("No speech detected")
                 return
             }
-            guard try session.publish(text: result.text, requestID: id) else {
+            let finalText = PhraseReplacement.apply(result.text, rules: replacements.load())
+            guard try session.publish(text: finalText, requestID: id) else {
                 finishFailure("The request is no longer available.")
                 return
             }
-            text = result.text
+            text = finalText
             retainedAudio = []
             terminal = true
             background.end()
