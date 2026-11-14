@@ -18,7 +18,8 @@ struct LastResultView: View {
 
     #if DEBUG
     private var snapshotResult = false
-    init(snapshot: LastResult? = nil) {
+    init(snapshot: LastResult? = nil, snapshotCopied: Bool = false) {
+        _copied = State(initialValue: snapshotCopied)
         _result = State(initialValue: snapshot)
         snapshotResult = snapshot != nil
     }
@@ -61,13 +62,18 @@ struct LastResultView: View {
                             Button("Show All") { expanded = true }
                         }
                         HStack {
-                            Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") {
-                                copy(result)
+                            Button { copy(result) } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                    Text(copied ? "Copied" : "Copy")
+                                }
                             }
                             .buttonStyle(.bordered)
-                            Button("Discard", systemImage: "trash") {
+                            Button {
                                 discardTarget = result
                                 showDiscard = true
+                            } label: {
+                                HStack(spacing: 6) { Image(systemName: "trash"); Text("Discard") }
                             }
                             .buttonStyle(.bordered).tint(.red)
                         }

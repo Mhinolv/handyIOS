@@ -28,7 +28,9 @@ xcrun simctl install "$udid" build/Snapshots/Build/Products/Debug-iphonesimulato
 trap 'xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true' EXIT
 states=(setup model-not-downloaded model-downloading model-failed model-ready
   listening transcribing text-ready recovery last-result silence-settings replacements licenses
-  keyboard-idle keyboard-opening keyboard-listening keyboard-inserted keyboard-full-access-off keyboard-abc)
+  keyboard-idle keyboard-opening keyboard-listening keyboard-inserted keyboard-full-access-off keyboard-abc
+  denied listening-last-10 no-speech vad-failure failed recovery-route recovery-expiry recovery-transcription
+  setup-done replacements-empty replacements-edit last-result-copied keyboard-chip keyboard-recovery)
 for state in $states; do
   for appearance in light dark; do
     xcrun simctl ui "$udid" appearance "$appearance"
@@ -38,4 +40,4 @@ for state in $states; do
     xcrun simctl terminate "$udid" "$bundle"
   done
 done
-print "Saved 38 screenshots to $out"
+print "Saved $(( ${#states} * 2 )) screenshots to $out"

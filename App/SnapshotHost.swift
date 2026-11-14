@@ -12,6 +12,13 @@ enum SnapshotState: String {
     case keyboardIdle = "keyboard-idle", keyboardOpening = "keyboard-opening"
     case keyboardListening = "keyboard-listening", keyboardInserted = "keyboard-inserted"
     case keyboardFullAccessOff = "keyboard-full-access-off", keyboardABC = "keyboard-abc"
+    case denied, listeningLastSeconds = "listening-last-10", noSpeech = "no-speech"
+    case vadFailure = "vad-failure", failed
+    case recoveryRoute = "recovery-route", recoveryExpiry = "recovery-expiry"
+    case recoveryTranscription = "recovery-transcription"
+    case setupDone = "setup-done", replacementsEmpty = "replacements-empty"
+    case replacementsEdit = "replacements-edit", lastResultCopied = "last-result-copied"
+    case keyboardChip = "keyboard-chip", keyboardRecovery = "keyboard-recovery"
 
     static var requested: SnapshotState? {
         let arguments = ProcessInfo.processInfo.arguments
@@ -27,7 +34,7 @@ struct SnapshotHost: View {
     var body: some View {
         NavigationStack {
             switch state {
-            case .setup: SetupView()
+            case .setup, .setupDone: SetupView()
             case .modelNotDownloaded, .modelDownloading, .modelFailed, .modelReady:
                 ModelDownloadView(model: ModelDownloadManager(manifest: .production,
                     transport: SnapshotTransport(), storage: SnapshotModelStorage()), snapshotState: modelState)
@@ -35,19 +42,34 @@ struct SnapshotHost: View {
             case .transcribing: DictationStatusView(state: .stopped, transcribing: true)
             case .textReady: DictationStatusView(state: .stopped, text: sample)
             case .recovery: DictationStatusView(state: .stopped, recovery: .interruption)
-            case .lastResult:
-                List { LastResultView(snapshot: lastResult) }.navigationTitle("handyIOS")
+            case .recoveryRoute: DictationStatusView(state: .stopped, recovery: .route)
+            case .recoveryExpiry: DictationStatusView(state: .stopped, recovery: .expiry)
+            case .recoveryTranscription: DictationStatusView(state: .stopped, recovery: .transcription)
+            case .denied: DictationStatusView(state: .denied)
+            case .listeningLastSeconds: DictationStatusView(state: .recording, speechStatus: "Hearing you", elapsed: 172)
+            case .noSpeech: DictationStatusView(state: .stopped, stopReason: .noSpeech)
+            case .vadFailure:
+                DictationStatusView(state: .recording,
+                    speechStatus: "Auto-stop is not available. Tap Stop when you finish.",
+                    vadError: "The speech detector stopped.")
+            case .failed: DictationStatusView(state: .failed)
+            case .lastResult, .lastResultCopied:
+                List { LastResultView(snapshot: lastResult, snapshotCopied: state == .lastResultCopied) }
+                    .navigationTitle("handyIOS")
             case .silenceSettings:
                 SilenceSettingsView().defaultAppStorage(UserDefaults(suiteName: "HandySnapshot")!)
-            case .replacements:
-                ReplacementSettingsView(model: ReplacementSettingsModel(storage: SnapshotReplacements()))
+            case .replacements, .replacementsEdit:
+                ReplacementSettingsView(model: ReplacementSettingsModel(storage: SnapshotReplacements()),
+                    snapshotSheet: state == .replacementsEdit)
+            case .replacementsEmpty:
+                ReplacementSettingsView(model: ReplacementSettingsModel(storage: SnapshotReplacements(rules: [])))
             case .licenses: ModelNoticesView()
             default:
                 VStack(alignment: .leading) {
                     Text("Try the keyboard").font(.headline).padding()
                     Text(state == .keyboardInserted ? sample : "Your text appears here.").padding()
                     Spacer()
-                    SnapshotKeyboard(name: state.rawValue).frame(height: state == .keyboardABC ? 290 : 220)
+                    SnapshotKeyboard(name: state.rawValue).frame(height: KeyboardLayout.height)
                         .background(Color(uiColor: .secondarySystemBackground))
                 }.navigationTitle("Keyboard")
             }
@@ -98,7 +120,8 @@ private struct SnapshotModelStorage: ModelStorage {
     func install(_ temporary: URL, asset: ModelAsset) async throws {}
 }
 private struct SnapshotReplacements: ReplacementRuleStorage {
-    func load() -> [ReplacementRule] { [ReplacementRule(phrase: "handy ios", replacement: "handyIOS")] }
+    var rules = [ReplacementRule(phrase: "handy ios", replacement: "handyIOS")]
+    func load() -> [ReplacementRule] { rules }
     func save(_ rules: [ReplacementRule]) throws {}
 }
 #endif

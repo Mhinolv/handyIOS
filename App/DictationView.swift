@@ -86,7 +86,9 @@ struct DictationStatusView: View {
                 Image(systemName: "waveform", variableValue: level)
                     .font(.system(size: 48)).accessibilityHidden(true)
                 ReturnHintView(compact: true)
-                Button("Stop", systemImage: "stop.fill") { stop() }
+                Button(action: stop) {
+                    Label("Stop", systemImage: "stop.fill").frame(maxWidth: .infinity, minHeight: 44)
+                }
                     .buttonStyle(.borderedProminent).tint(.red).controlSize(.large)
                 Button("Cancel") { cancel() }.buttonStyle(.bordered)
             case .stopped:
@@ -105,7 +107,7 @@ struct DictationStatusView: View {
                 } else if let text = text {
                     ReturnHintView(title: "Text Ready")
                     Text(text).lineLimit(3).foregroundStyle(.secondary).padding()
-                        .background(Color(uiColor: .secondarySystemBackground))
+                        .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 12))
                     Button("Done") { done() }.buttonStyle(.bordered)
                 } else if let error = error {
                     Text(error)
@@ -113,6 +115,7 @@ struct DictationStatusView: View {
                 } else {
                     if reachedCap { Text("Reached the 3-minute limit.") }
                     ProgressView("Transcribing…")
+                    Button("Cancel", action: cancel).buttonStyle(.bordered)
                 }
             case .cancelled:
                 EmptyView()

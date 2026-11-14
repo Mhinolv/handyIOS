@@ -7,7 +7,7 @@ struct SetupView: View {
     static let privacyText = "Audio and text stay on this iPhone. handyIOS has no accounts and no analytics. It uses the network only to download the speech model."
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
-    @State private var confirmed = false
+    @State private var confirmed = Self.initialConfirmed
     @State private var microphone = Self.initialPermission
     @State private var sample = ""
     @State private var settingsFailed = false
@@ -95,9 +95,17 @@ struct SetupView: View {
 
     private static var initialPermission: AVAudioApplication.recordPermission {
         #if DEBUG
-        if SnapshotState.requested != nil { return .undetermined }
+        if let state = SnapshotState.requested { return state == .setupDone ? .granted : .undetermined }
         #endif
         return AVAudioApplication.shared.recordPermission
+    }
+
+    private static var initialConfirmed: Bool {
+        #if DEBUG
+        return SnapshotState.requested == .setupDone
+        #else
+        return false
+        #endif
     }
 
     private func refresh() {

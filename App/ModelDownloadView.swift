@@ -38,7 +38,9 @@ struct ModelDownloadView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                 } else if state != .checking && state != .ready {
-                    Button(state == .notDownloaded ? "Download" : "Retry") { model.start() }
+                    Button { model.start() } label: {
+                        Text(state == .notDownloaded ? "Download" : "Retry").frame(maxWidth: .infinity)
+                    }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
                         .frame(maxWidth: .infinity)

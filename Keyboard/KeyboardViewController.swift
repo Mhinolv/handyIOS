@@ -1,10 +1,21 @@
 import HandyKit
 import UIKit
 
+/// One height for the dictation and ABC panels, so the keyboard does not jump on a switch.
+enum KeyboardLayout {
+    static let height: CGFloat = 290
+}
+
 final class KeyboardViewController: UIInputViewController {
     #if DEBUG
     var snapshotName: String?
     #endif
+    private var fullAccess: Bool {
+        #if DEBUG
+        if let snapshotName { return snapshotName != "keyboard-full-access-off" }
+        #endif
+        return hasFullAccess
+    }
     private let launcher: any KeyboardAppLaunching = ResponderChainAppLauncher()
     private let consumer = ResultConsumer()
     private var session: DictationSession?
@@ -20,6 +31,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.tintColor = .systemBlue
         status.text = "Tap the mic to dictate"
         status.font = .preferredFont(forTextStyle: .footnote)
         status.textColor = .secondaryLabel
@@ -29,7 +41,7 @@ final class KeyboardViewController: UIInputViewController {
 
         mic.setImage(UIImage(systemName: "mic.fill"), for: .normal)
         mic.tintColor = .white
-        mic.backgroundColor = view.tintColor
+        mic.backgroundColor = UIColor.systemBlue
         mic.layer.cornerRadius = 36
         mic.accessibilityLabel = "Dictate"
         mic.addTarget(self, action: #selector(dictate), for: .touchUpInside)
@@ -76,8 +88,11 @@ final class KeyboardViewController: UIInputViewController {
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
-            stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -16)
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -16)
         ])
+        let height = view.heightAnchor.constraint(equalToConstant: KeyboardLayout.height)
+        height.priority = .defaultHigh
+        height.isActive = true
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -94,11 +109,17 @@ final class KeyboardViewController: UIInputViewController {
             case "keyboard-inserted": setStatus("Inserted", symbol: "checkmark")
             case "keyboard-full-access-off":
                 setStatus(KeyboardAccessStatus.message(fullAccess: false, manual: false, requestPending: false) ?? "")
+            case "keyboard-recovery":
+                setStatus("Open handyIOS to finish.", symbol: "exclamationmark.circle")
+                mic.backgroundColor = .systemOrange
+            case "keyboard-chip":
+                setStatus("Tap the mic to dictate")
+                consumer.showSnapshot(text: "Meet me at the library at three.")
             case "keyboard-abc": dictationPanel.isHidden = true; manual.isHidden = false
             default: setStatus("Tap the mic to dictate")
             }
             if snapshotName != "keyboard-full-access-off" && snapshotName != "keyboard-opening" {
-                mic.setImage(UIImage(systemName: snapshotName == "keyboard-listening" ? "stop.fill" : snapshotName == "keyboard-inserted" ? "checkmark" : "mic.fill"), for: .normal)
+                mic.setImage(UIImage(systemName: snapshotName == "keyboard-listening" ? "stop.fill" : snapshotName == "keyboard-inserted" ? "checkmark" : snapshotName == "keyboard-recovery" ? "exclamationmark.circle" : "mic.fill"), for: .normal)
             }
             return
         }
@@ -134,7 +155,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     @objc private func dictate() {
-        guard hasFullAccess else {
+        guard fullAccess else {
             setStatus("Turn on Full Access in Settings to dictate. Use ABC to type.")
             return
         }
@@ -169,7 +190,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func consumeResult() {
-        guard hasFullAccess else { return }
+        guard fullAccess else { return }
         do {
             if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
             guard let session else { return }
@@ -219,10 +240,10 @@ final class KeyboardViewController: UIInputViewController {
     private func setStatus(_ text: String, opening: Bool = false, symbol: String = "mic.fill") {
         let changed = status.text != text
         status.text = text
-        mic.backgroundColor = view.tintColor
-        mic.setImage(opening ? nil : UIImage(systemName: hasFullAccess ? symbol : "mic.slash"), for: .normal)
-        mic.accessibilityLabel = hasFullAccess ? "Dictate" : "Dictation requires Full Access"
-        mic.accessibilityHint = hasFullAccess ? "" : "Turn on Full Access in Settings to dictate."
+        mic.backgroundColor = UIColor.systemBlue
+        mic.setImage(opening ? nil : UIImage(systemName: fullAccess ? symbol : "mic.slash"), for: .normal)
+        mic.accessibilityLabel = fullAccess ? "Dictate" : "Dictation requires Full Access"
+        mic.accessibilityHint = fullAccess ? "" : "Turn on Full Access in Settings to dictate."
         mic.isEnabled = !opening
         if opening { progress.startAnimating() } else { progress.stopAnimating() }
         if changed { UIAccessibility.post(notification: .announcement, argument: text) }
@@ -235,8 +256,8 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func refreshAccess() {
-        manual.update(fullAccess: hasFullAccess, needsGlobe: needsInputModeSwitchKey)
-        if hasFullAccess {
+        manual.update(fullAccess: fullAccess, needsGlobe: needsInputModeSwitchKey)
+        if fullAccess {
             UserDefaults(suiteName: HandyConfiguration.appGroupIdentifier)?.set(true, forKey: HandyConfiguration.keyboardSeenWithFullAccessKey)
         } else {
             session = nil
@@ -244,7 +265,7 @@ final class KeyboardViewController: UIInputViewController {
         // Restore the pending identity before deciding whether to replace the message.
         // This also covers a new extension instance that resumes an existing request.
         var pending = requestID != nil
-        if hasFullAccess {
+        if fullAccess {
             do {
                 if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
                 if let request = try session?.snapshot().request {
@@ -258,7 +279,7 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
         if let message = KeyboardAccessStatus.message(
-            fullAccess: hasFullAccess, manual: !manual.isHidden, requestPending: pending
+            fullAccess: fullAccess, manual: !manual.isHidden, requestPending: pending
         ) {
             setStatus(message)
         }
