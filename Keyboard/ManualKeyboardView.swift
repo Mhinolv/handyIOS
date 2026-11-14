@@ -1,3 +1,4 @@
+import HandyKit
 import UIKit
 
 /// Uses only the host text proxy through callbacks. No shared storage is needed.
@@ -9,9 +10,11 @@ final class ManualKeyboardView: UIStackView {
     let globe = UIButton(type: .system)
     private let mic = UIButton(type: .system)
     private var letters: [UIButton] = []
-    private var shifted = false
+    private var shiftState = ManualShiftState()
+    private var deleteState = DeleteRepeatState()
+    private let clock = ContinuousClock()
+    private let clockOrigin = ContinuousClock.now
     private var repeatTask: Task<Void, Never>?
-    private var repeatedDelete = false
     private let shift = UIButton(type: .system)
 
     init() {
@@ -23,8 +26,7 @@ final class ManualKeyboardView: UIStackView {
                 let value = String(character)
                 let key = button(value, label: value) { [weak self] in
                     guard let self else { return }
-                    self.insert(self.shifted ? value.uppercased() : value)
-                    self.shifted = false
+                    self.insert(self.shiftState.type(value))
                     self.updateShift()
                 }
                 letters.append(key)
@@ -33,18 +35,15 @@ final class ManualKeyboardView: UIStackView {
             if characters == "zxcvbnm" {
                 configure(shift, title: "⇧", label: "Shift")
                 shift.addAction(UIAction { [weak self] _ in
-                    self?.shifted.toggle()
+                    self?.shiftState.toggle()
                     self?.updateShift()
                 }, for: .touchUpInside)
                 keys.insert(shift, at: 0)
-                let deleteKey = button("⌫", label: "Delete") { [weak self] in
-                    guard let self else { return }
-                    if !self.repeatedDelete { self.delete() }
-                    self.stopRepeating()
-                    self.repeatedDelete = false
-                }
+                let deleteKey = DeleteKeyButton(type: .system)
+                configure(deleteKey, title: "⌫", label: "Delete")
                 deleteKey.addTarget(self, action: #selector(startRepeating), for: .touchDown)
-                deleteKey.addTarget(self, action: #selector(stopRepeating), for: [.touchUpOutside, .touchCancel, .touchDragExit])
+                deleteKey.addTarget(self, action: #selector(stopRepeating), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+                deleteKey.accessibilityHint = "Delete one character. Hold to repeat."
                 keys.append(deleteKey)
             }
             addArrangedSubview(row(keys))
@@ -91,11 +90,11 @@ final class ManualKeyboardView: UIStackView {
     }
 
     private func updateShift() {
-        shift.accessibilityValue = shifted ? "On" : "Off"
-        shift.backgroundColor = shifted ? .tertiarySystemFill : .secondarySystemBackground
+        shift.accessibilityValue = shiftState.isActive ? "On" : "Off"
+        shift.backgroundColor = shiftState.isActive ? .tertiarySystemFill : .secondarySystemBackground
         for key in letters {
             let title = key.title(for: .normal) ?? ""
-            let value = shifted ? title.uppercased() : title.lowercased()
+            let value = shiftState.label(for: title)
             key.setTitle(value, for: .normal)
             key.accessibilityLabel = value
         }
@@ -103,26 +102,39 @@ final class ManualKeyboardView: UIStackView {
 
     @objc private func startRepeating() {
         stopRepeating()
-        repeatedDelete = false
+        if deleteState.press(at: clockOrigin.duration(to: clock.now)) { delete() }
         repeatTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: .milliseconds(400))
                 while !Task.isCancelled {
-                    self?.repeatedDelete = true
-                    self?.delete()
-                    try await Task.sleep(for: .milliseconds(80))
+                    guard let delay = self?.deleteState.delay(at: self?.elapsed ?? .zero) else { return }
+                    try await Task.sleep(for: delay)
+                    guard !Task.isCancelled, let self else { return }
+                    if self.deleteState.tick(at: self.elapsed) { self.delete() }
                 }
             } catch { }
         }
     }
 
+    private var elapsed: Duration { clockOrigin.duration(to: clock.now) }
+
     @objc func stopRepeating() {
         repeatTask?.cancel()
         repeatTask = nil
+        deleteState.release()
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window == nil { stopRepeating() }
+    }
+}
+
+/// VoiceOver activation has no physical touch-down event.
+@MainActor
+private final class DeleteKeyButton: UIButton {
+    override func accessibilityActivate() -> Bool {
+        sendActions(for: .touchDown)
+        sendActions(for: .touchUpInside)
+        return true
     }
 }

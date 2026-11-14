@@ -179,11 +179,30 @@ final class KeyboardViewController: UIInputViewController {
     private func refreshAccess() {
         manual.update(fullAccess: hasFullAccess, needsGlobe: needsInputModeSwitchKey)
         if hasFullAccess {
-            UserDefaults(suiteName: HandyConfiguration.appGroupIdentifier)?.set(true, forKey: "keyboardSeenWithFullAccess")
-            setStatus("Tap the mic to dictate")
+            UserDefaults(suiteName: HandyConfiguration.appGroupIdentifier)?.set(true, forKey: HandyConfiguration.keyboardSeenWithFullAccessKey)
         } else {
             session = nil
-            setStatus("Turn on Full Access in Settings to dictate. Use ABC to type.")
+        }
+        // Restore the pending identity before deciding whether to replace the message.
+        // This also covers a new extension instance that resumes an existing request.
+        var pending = requestID != nil
+        if hasFullAccess {
+            do {
+                if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
+                if let request = try session?.snapshot().request {
+                    if requestID == nil { setStatus("Open Handy, then come back.") }
+                    requestID = request.id
+                    pending = true
+                }
+            } catch {
+                setStatus("Could not read the shared request. Try again.")
+                return
+            }
+        }
+        if let message = KeyboardAccessStatus.message(
+            fullAccess: hasFullAccess, manual: !manual.isHidden, requestPending: pending
+        ) {
+            setStatus(message)
         }
     }
 

@@ -95,7 +95,7 @@ struct SetupView: View {
 
     private func refresh() {
         confirmed = UserDefaults(suiteName: HandyConfiguration.appGroupIdentifier)?
-            .bool(forKey: "keyboardSeenWithFullAccess") ?? false
+            .bool(forKey: HandyConfiguration.keyboardSeenWithFullAccessKey) ?? false
         microphone = AVAudioApplication.shared.recordPermission
     }
 }
