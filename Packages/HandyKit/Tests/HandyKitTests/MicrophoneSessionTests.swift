@@ -31,6 +31,20 @@ final class MicrophoneSessionTests: XCTestCase {
         XCTAssertEqual(engine.stops, 1)
         XCTAssertTrue(session.audio.isEmpty)
     }
+    @MainActor func testBackgroundHookRunsBeforeMicrophoneRelease() async {
+        let engine = FakeMicrophone()
+        var calls = 0
+        let session = MicrophoneSession(engine: engine, willStop: {
+            XCTAssertTrue(engine.active)
+            calls += 1
+        })
+        await session.start()
+        session.stop()
+        session.stop()
+        XCTAssertEqual(calls, 1)
+        XCTAssertFalse(engine.active)
+    }
+
     func testVADDrainPreservesAudioAndResetsCursor() {
         let buffer = CaptureBuffer()
         buffer.append([0.1, 0.2])

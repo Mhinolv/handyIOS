@@ -6,12 +6,13 @@ final class ResultConsumer {
     private let delivery = ResultDelivery()
     private let chip = UIStackView()
     private let preview = UILabel()
+    private let insertButton = UIButton(type: .system)
     private var hiddenID: UUID?
     private var insertAction: (() -> Void)?
     private var pendingID: UUID?
 
     func install(in stack: UIStackView) {
-        let insert = UIButton(type: .system)
+        let insert = insertButton
         insert.configuration = .borderedProminent()
         insert.setTitle("Insert", for: .normal)
         insert.addAction(UIAction { [weak self] _ in self?.insertAction?() }, for: .touchUpInside)
@@ -53,8 +54,8 @@ final class ResultConsumer {
             return true
         }
         pendingID = id
-        preview.text = String(text.prefix(30))
-        preview.accessibilityLabel = "Insert dictation: \(text.prefix(30))"
+        preview.text = String(text.prefix(30)) + (text.count > 30 ? "…" : "")
+        insertButton.accessibilityLabel = "Insert dictation: \(text.prefix(30))"
         chip.isHidden = hiddenID == id
         insertAction = { [weak self] in
             guard let self else { return }

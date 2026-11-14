@@ -24,6 +24,19 @@ final class ResultDeliveryTests: XCTestCase {
             XCTAssertNil(try session.snapshot().text)
         }
     }
+    func testEmptyFieldAutomaticallyInsertsOnce() throws {
+        let session = DictationSession(storage: DictationSessionTests.Storage())
+        let id = try ready(session)
+        let document = UUID()
+        let consumer = ResultDelivery()
+        consumer.begin(requestID: id, focus: DeliveryFocus(document: document, before: nil, after: nil))
+        let focus = DeliveryFocus(document: document, before: "", after: nil)
+        var output: [String] = []
+        XCTAssertTrue(try consumer.insert(session: session, focus: focus) { output.append($0) })
+        XCTAssertFalse(try consumer.insert(session: session, focus: focus) { output.append($0) })
+        XCTAssertEqual(output, ["Hello"])
+    }
+
     func testChangedFocusAndReloadRequireTap() throws {
         let session = DictationSession(storage: DictationSessionTests.Storage())
         let id = try ready(session)
@@ -55,14 +68,10 @@ final class ResultDeliveryTests: XCTestCase {
         XCTAssertTrue(try consumer.insert(session: session, focus: focus) { _ in XCTFail() })
         XCTAssertEqual(count, 1)
     }
-    func testUnknownContextRequiresTapAndLegacyDecode() throws {
+    func testLegacyDecodePreservesRequestAndStopMessage() throws {
         let storage = DictationSessionTests.Storage()
         let session = DictationSession(storage: storage)
         let id = try ready(session)
-        let focus = DeliveryFocus(document: UUID(), before: nil, after: nil)
-        let consumer = ResultDelivery()
-        consumer.begin(requestID: id, focus: focus)
-        XCTAssertFalse(try consumer.insert(session: session, focus: focus) { _ in XCTFail() })
         try storage.transaction { data in
             var object = try JSONSerialization.jsonObject(with: data!) as! [String: Any]
             object["version"] = 1

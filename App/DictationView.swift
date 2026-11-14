@@ -6,7 +6,7 @@ struct DictationView: View {
     let controller: DictationController
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
-    @State private var coordinator = DictationCoordinator()
+    private var coordinator: DictationCoordinator { controller.coordinator }
 
     var body: some View {
         VStack(spacing: 24) {
@@ -69,7 +69,7 @@ struct DictationView: View {
                 UIAccessibility.post(notification: .announcement, argument: "No speech detected.")
             }
             if controller.state == .stopped && controller.stopReason != .noSpeech {
-                await coordinator.transcribe(samples: controller.audio, session: controller.shared, id: controller.id)
+                await coordinator.transcribe(samples: controller.audio)
                 controller.releaseAudio()
             }
             if controller.state == .cancelled { dismiss() }

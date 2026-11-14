@@ -1,39 +1,26 @@
-import Foundation
 import HandyKit
-import Observation
+import UIKit
 
-@MainActor @Observable
-final class DictationCoordinator {
-    private(set) var transcribing = false
-    private(set) var text: String?
-    private(set) var error: String?
-    private let asr: any BatchASR
-    init(asr: any BatchASR = FluidAudioBatchASR()) { self.asr = asr }
+/// The controller owns the flow so audio survives cover updates after background expiry.
+typealias DictationCoordinator = TranscriptionFlow
 
-    func transcribe(samples: [Float], session: DictationSession, id: UUID) async {
-        guard !transcribing, text == nil, error == nil else { return }
-        transcribing = true
-        defer { transcribing = false }
-        do {
-            let result = try await asr.transcribe(ASRAudio(samples: samples))
-            await asr.cleanup()
-            try Task.checkCancellation()
-            guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                try session.setStopMessage("No speech detected", requestID: id)
-                _ = try session.fail(requestID: id)
-                error = "No speech detected"
-                return
-            }
-            guard try session.publish(text: result.text, requestID: id) else {
-                error = "The request is no longer available."
-                return
-            }
-            text = result.text
-        } catch {
-            await asr.cleanup()
-            try? session.setStopMessage("Transcription failed. Try again.", requestID: id)
-            _ = try? session.fail(requestID: id)
-            self.error = "Transcription failed. Return to your keyboard and try again."
+@MainActor
+final class AppTranscriptionBackgroundTask: TranscriptionBackgroundTask {
+    private var identifier: UIBackgroundTaskIdentifier = .invalid
+
+    func begin(expiration: @escaping @MainActor @Sendable () -> Void) -> Bool {
+        guard identifier == .invalid else { return true }
+        identifier = UIApplication.shared.beginBackgroundTask(withName: "Local dictation") {
+            // UIKit calls the expiration handler on the main thread.
+            MainActor.assumeIsolated { expiration() }
         }
+        return identifier != .invalid
+    }
+
+    func end() {
+        guard identifier != .invalid else { return }
+        let task = identifier
+        identifier = .invalid
+        UIApplication.shared.endBackgroundTask(task)
     }
 }
