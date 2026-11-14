@@ -5,6 +5,9 @@ struct ContentView: View {
     @AppStorage(SilenceDelay.storageKey) private var silenceSeconds = SilenceDelay.defaultValue.rawValue
     @StateObject private var model = ModelDownloadManager.appDefault()
 
+    @AppStorage("hasShownKeyboardSetup") private var hasShownSetup = false
+    @State private var showSetup = false
+
     var body: some View {
         NavigationStack {
             List {
@@ -26,7 +29,15 @@ struct ContentView: View {
                         LabeledContent("Model", value: model.state == .ready ? "Ready" : "Not Downloaded")
                     }
                 }
+                Section("Keyboard") {
+                    Button { showSetup = true } label: {
+                        Label("Keyboard", systemImage: "keyboard")
+                    }
+                }
                 Section("About") {
+                    NavigationLink("Privacy") {
+                        List { Text(SetupView.privacyText) }.navigationTitle("Privacy")
+                    }
                     NavigationLink { ModelNoticesView() } label: {
                         Label("Acknowledgements", systemImage: "doc.text")
                     }
@@ -34,6 +45,20 @@ struct ContentView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("handyIOS")
+        }
+        .sheet(isPresented: $showSetup) {
+            NavigationStack {
+                SetupView()
+                    .toolbar { ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showSetup = false }
+                    } }
+            }
+        }
+        .onAppear {
+            if !hasShownSetup {
+                hasShownSetup = true
+                showSetup = true
+            }
         }
         .task { await model.refresh() }
     }
