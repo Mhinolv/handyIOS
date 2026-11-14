@@ -3,6 +3,9 @@ options:
   deploymentTarget:
     iOS: "26.0"
 packages:
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio
+    exactVersion: 0.18.3
   HandyKit:
     path: Packages/HandyKit
 settings:
@@ -37,6 +40,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.mhinolv.handyios
     dependencies:
       - package: HandyKit
+      - package: FluidAudio
       - target: HandyKeyboard
         embed: true
   HandyKeyboard:
