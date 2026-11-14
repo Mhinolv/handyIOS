@@ -1,11 +1,15 @@
 #!/bin/zsh
-# Full test suite. Run from any folder. Keep it fast: use fakes for audio, ASR and system calls.
-set -e
+# Run all local package tests. Run from any folder.
+set -euo pipefail
 cd "${0:A:h}/.."
-ran=0
+if [[ ! -f Packages/HandyKit/Package.swift ]]; then
+  print -u2 "test.sh: missing required package: Packages/HandyKit"
+  exit 1
+fi
 for pkg in Packages/*(N/); do
-  [[ -f $pkg/Package.swift ]] || continue
+  if [[ ! -f "$pkg/Package.swift" ]]; then
+    print -u2 "test.sh: missing Package.swift: $pkg"
+    exit 1
+  fi
   swift test --package-path "$pkg"
-  ran=1
 done
-(( ran )) || echo "test.sh: no Swift packages yet. Nothing to test."
