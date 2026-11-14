@@ -7,6 +7,13 @@ final class DictationController: Identifiable {
     let id: UUID
     private let shared: DictationSession
     private let capture: MicrophoneSession
+    let silencePolicy: SilenceStopPolicy
+    private(set) var stopReason: CaptureStopReason?
+    var speechStatus: String {
+        if silencePolicy.failure != nil { return "Auto-stop is not available. Tap Stop when you finish." }
+        if silencePolicy.delay == .off { return "Tap Stop when you finish." }
+        return silencePolicy.hasSpeech ? "Hearing you" : "Listening…"
+    }
     private var task: Task<Void, Never>?
     var state: MicrophoneSession.State = .idle
     private var startedAt: ContinuousClock.Instant?
@@ -16,10 +23,14 @@ final class DictationController: Identifiable {
     var message: String?
     private(set) var audio: [Float] = []
 
-    init(id: UUID, shared: DictationSession) {
+    init(id: UUID, shared: DictationSession, silencePolicy: SilenceStopPolicy? = nil) {
         self.id = id
         self.shared = shared
-        capture = MicrophoneSession(engine: AppMicrophoneEngine())
+        let policy = silencePolicy ?? SilenceStopPolicy(delay: .stored())
+        self.silencePolicy = policy
+        // Phase 2 supplies the detector. Until then, keep manual Stop available.
+        if silencePolicy == nil { policy.detectorFailed("Voice activity detection is not installed.") }
+        capture = MicrophoneSession(engine: AppMicrophoneEngine(), policy: policy)
     }
 
     func start() async {
@@ -51,7 +62,7 @@ final class DictationController: Identifiable {
         let duration = startedAt.map { Double($0.duration(to: .now).components.seconds) } ?? 0
         elapsed = min(180, Int(max(capture.progress.elapsed, duration)))
         if elapsed >= Int(DictationSession.maximumDictationDuration - DictationSession.captureStopMargin) {
-            capture.stop()
+            capture.stop(reason: .durationCap)
             finish(atCap: true)
             return
         }
@@ -74,7 +85,15 @@ final class DictationController: Identifiable {
     private func finish(atCap: Bool = false) {
         task?.cancel()
         reachedCap = atCap || capture.reachedCap
+        stopReason = capture.stopReason
         audio = capture.audio
+        if stopReason == .noSpeech {
+            audio = []
+            message = "No speech detected."
+            state = .stopped
+            try? shared.cancel(requestID: id)
+            return
+        }
         state = .stopped
         do {
             if try !shared.finishCapture(requestID: id) {
@@ -95,6 +114,10 @@ final class DictationController: Identifiable {
     }
 
     func fail() {
+        if state == .recording {
+            capture.stop(reason: .interruption)
+            stopReason = .interruption
+        }
         task?.cancel()
         capture.cancel()
         audio = []

@@ -23,6 +23,9 @@ struct DictationView: View {
                 Button("Cancel") { controller.cancel(); dismiss() }.buttonStyle(.bordered)
             case .recording:
                 Label("Recording", systemImage: "record.circle.fill").font(.headline).foregroundStyle(.red)
+                Text(controller.speechStatus)
+                    .foregroundStyle(controller.silencePolicy.failure == nil ? Color.secondary : Color.orange)
+                if let error = controller.silencePolicy.failure { Text(error).foregroundStyle(.orange) }
                 Text(String(format: "%02d:%02d", controller.elapsed / 60, controller.elapsed % 60))
                     .font(.system(size: 64)).monospacedDigit()
                     .accessibilityLabel("\(controller.elapsed) seconds of 3 minutes")
@@ -35,7 +38,11 @@ struct DictationView: View {
                     .buttonStyle(.borderedProminent).tint(.red).controlSize(.large)
                 Button("Cancel") { controller.cancel(); dismiss() }.buttonStyle(.bordered)
             case .stopped:
-                if controller.reachedCap && !showsTranscribing {
+                if controller.stopReason == .noSpeech {
+                    Image(systemName: "mic.slash").font(.system(size: 56))
+                    Text("No speech detected.")
+                    Button("Done") { dismiss() }
+                } else if controller.reachedCap && !showsTranscribing {
                     Text("Reached the 3-minute limit.")
                 } else {
                     Text(controller.message ?? "Audio captured.")
@@ -53,6 +60,9 @@ struct DictationView: View {
         .interactiveDismissDisabled()
         .task { await controller.start() }
         .task(id: controller.state) {
+            if controller.state == .stopped && controller.stopReason == .noSpeech {
+                UIAccessibility.post(notification: .announcement, argument: "No speech detected.")
+            }
             if controller.state == .stopped && controller.reachedCap {
                 try? await Task.sleep(for: .seconds(2))
                 showsTranscribing = true

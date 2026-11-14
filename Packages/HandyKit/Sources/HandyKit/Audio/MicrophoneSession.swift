@@ -19,7 +19,14 @@ public struct CaptureProgress: Sendable {
 }
 
 public protocol CaptureStopPolicy {
+    func microphoneReady()
+    var stopReason: CaptureStopReason? { get }
     func shouldStop(_ progress: CaptureProgress) -> Bool
+}
+
+public extension CaptureStopPolicy {
+    func microphoneReady() {}
+    var stopReason: CaptureStopReason? { nil }
 }
 
 public struct ManualCaptureStopPolicy: CaptureStopPolicy {
@@ -62,6 +69,7 @@ public final class MicrophoneSession {
     public private(set) var state: State = .idle
     public private(set) var audio: [Float] = []
     public private(set) var reachedCap = false
+    public private(set) var stopReason: CaptureStopReason?
     private let engine: any MicrophoneEngine
     private let policy: any CaptureStopPolicy
     public init(engine: any MicrophoneEngine, policy: any CaptureStopPolicy = ManualCaptureStopPolicy()) {
@@ -75,16 +83,18 @@ public final class MicrophoneSession {
         let allowed = await engine.requestPermission()
         guard state == .askingPermission else { return }
         guard allowed else { state = .denied; return }
-        do { try engine.start(); state = .recording }
+        do { try engine.start(); policy.microphoneReady(); state = .recording }
         catch { _ = engine.stop(); state = .failed }
     }
     public func tick() {
         guard state == .recording else { return }
         reachedCap = progress.sampleCount >= CaptureBuffer.maximumSamples
-        if reachedCap || policy.shouldStop(progress) { stop() }
+        if reachedCap { stop(reason: .durationCap) }
+        else if policy.shouldStop(progress) { stop(reason: policy.stopReason ?? .silence) }
     }
-    public func stop() {
+    public func stop(reason: CaptureStopReason = .userStop) {
         guard state == .recording else { return }
+        stopReason = reason
         audio = engine.stop()
         state = .stopped
     }

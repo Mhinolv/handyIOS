@@ -18,6 +18,19 @@ private final class FakeMicrophone: MicrophoneEngine {
 }
 
 final class MicrophoneSessionTests: XCTestCase {
+    @MainActor func testSilencePolicyReleasesMicrophoneAndDistinguishesReasons() async {
+        var time: Double = 0
+        let policy = SilenceStopPolicy(now: { time })
+        let engine = FakeMicrophone()
+        let session = MicrophoneSession(engine: engine, policy: policy)
+        await session.start()
+        time = 10
+        session.tick()
+        XCTAssertEqual(session.stopReason, .noSpeech)
+        XCTAssertFalse(engine.active)
+        XCTAssertEqual(engine.stops, 1)
+        XCTAssertTrue(session.audio.isEmpty)
+    }
     @MainActor func testDeniedDoesNotStart() async {
         let engine = FakeMicrophone()
         engine.allowed = false
@@ -34,6 +47,7 @@ final class MicrophoneSessionTests: XCTestCase {
         session.stop()
         session.stop()
         XCTAssertEqual(session.audio, [0.1, -0.2])
+        XCTAssertEqual(session.stopReason, .userStop)
         XCTAssertFalse(engine.active)
         XCTAssertEqual(engine.stops, 1)
     }
@@ -55,6 +69,7 @@ final class MicrophoneSessionTests: XCTestCase {
         XCTAssertEqual(engine.progress.elapsed, 180)
         session.tick()
         XCTAssertTrue(session.reachedCap)
+        XCTAssertEqual(session.stopReason, .durationCap)
         XCTAssertEqual(session.audio.count, CaptureBuffer.maximumSamples)
         XCTAssertFalse(engine.active)
     }
