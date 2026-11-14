@@ -40,6 +40,7 @@ public final class CaptureBuffer: @unchecked Sendable {
     private let lock = NSLock()
     private var samples: [Float] = []
     private var level: Float = 0
+    private var readOffset = 0
     public init() {}
     public func append(_ input: [Float]) {
         lock.lock()
@@ -53,11 +54,20 @@ public final class CaptureBuffer: @unchecked Sendable {
         defer { lock.unlock() }
         return CaptureProgress(sampleCount: samples.count, level: min(1, level))
     }
+    /// Read each captured sample once for VAD without removing the transcription audio.
+    public func drainNewSamples() -> [Float] {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = Array(samples[readOffset...])
+        readOffset = samples.count
+        return result
+    }
     public func take() -> [Float] {
         lock.lock()
         defer { lock.unlock() }
         let result = samples
         samples = []
+        readOffset = 0
         level = 0
         return result
     }

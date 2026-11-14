@@ -5,10 +5,10 @@ final class SilenceStopPolicyTests: XCTestCase {
     private final class Clock { var time: Double = 0 }
     private let progress = CaptureProgress(sampleCount: 0, level: 1)
 
-    func testFakeDetectorFeedsProbabilities() throws {
+    func testFakeDetectorFeedsProbabilities() async throws {
         struct FakeDetector: VoiceActivityDetecting {
-            func reset() throws {}
-            func process(_ samples: [Float]) throws -> [SpeechProbability] {
+            func reset() async throws {}
+            func process(_ samples: [Float]) async throws -> [SpeechProbability] {
                 [.init(probability: 0.9, elapsed: 1), .init(probability: 0.1, elapsed: 2)]
             }
         }
@@ -16,7 +16,7 @@ final class SilenceStopPolicyTests: XCTestCase {
         let policy = SilenceStopPolicy(now: { clock.time })
         policy.microphoneReady()
         clock.time = 2
-        for frame in try FakeDetector().process([0, 0]) { policy.receive(frame) }
+        for frame in try await FakeDetector().process([0, 0]) { policy.receive(frame) }
         XCTAssertTrue(policy.hasSpeech)
         XCTAssertFalse(policy.shouldStop(progress))
         clock.time = 3

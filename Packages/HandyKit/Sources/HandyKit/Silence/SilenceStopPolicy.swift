@@ -27,10 +27,10 @@ public struct SpeechProbability: Sendable {
     }
 }
 
-public protocol VoiceActivityDetecting {
+public protocol VoiceActivityDetecting: Sendable {
     /// Accept mono 16 kHz PCM. Return frame probabilities without segment padding.
-    func process(_ samples: [Float]) throws -> [SpeechProbability]
-    func reset() throws
+    func process(_ samples: [Float]) async throws -> [SpeechProbability]
+    func reset() async throws
 }
 
 public enum CaptureStopReason: Equatable, Sendable {

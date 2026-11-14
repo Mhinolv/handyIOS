@@ -24,8 +24,8 @@ struct DictationView: View {
             case .recording:
                 Label("Recording", systemImage: "record.circle.fill").font(.headline).foregroundStyle(.red)
                 Text(controller.speechStatus)
-                    .foregroundStyle(controller.silencePolicy.failure == nil ? Color.secondary : Color.orange)
-                if let error = controller.silencePolicy.failure { Text(error).foregroundStyle(.orange) }
+                    .foregroundStyle(controller.vadError == nil ? Color.secondary : Color.orange)
+                if let error = controller.vadError { Text(error).foregroundStyle(.orange) }
                 Text(String(format: "%02d:%02d", controller.elapsed / 60, controller.elapsed % 60))
                     .font(.system(size: 64)).monospacedDigit()
                     .accessibilityLabel("\(controller.elapsed) seconds of 3 minutes")

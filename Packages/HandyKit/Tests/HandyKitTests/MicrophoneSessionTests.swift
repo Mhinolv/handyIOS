@@ -31,6 +31,18 @@ final class MicrophoneSessionTests: XCTestCase {
         XCTAssertEqual(engine.stops, 1)
         XCTAssertTrue(session.audio.isEmpty)
     }
+    func testVADDrainPreservesAudioAndResetsCursor() {
+        let buffer = CaptureBuffer()
+        buffer.append([0.1, 0.2])
+        XCTAssertEqual(buffer.drainNewSamples(), [0.1, 0.2])
+        XCTAssertTrue(buffer.drainNewSamples().isEmpty)
+        buffer.append([0.3])
+        XCTAssertEqual(buffer.drainNewSamples(), [0.3])
+        XCTAssertEqual(buffer.take(), [0.1, 0.2, 0.3])
+        buffer.append([0.4])
+        XCTAssertEqual(buffer.drainNewSamples(), [0.4])
+    }
+
     @MainActor func testDeniedDoesNotStart() async {
         let engine = FakeMicrophone()
         engine.allowed = false
