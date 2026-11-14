@@ -229,7 +229,7 @@ final class DictationSessionTests: XCTestCase {
     func testCorruptOrFutureDataIsNotOverwritten() throws {
         let storage = Storage()
         let session = DictationSession(storage: storage)
-        for json in ["invalid", "{\"version\":2,\"state\":\"idle\",\"stopRequested\":false}"] {
+        for json in ["invalid", "{\"version\":99,\"state\":\"idle\",\"stopRequested\":false}"] {
             storage.data = Data(json.utf8)
             XCTAssertThrowsError(try session.request())
             XCTAssertEqual(storage.data, Data(json.utf8))

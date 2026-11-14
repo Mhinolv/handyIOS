@@ -3,7 +3,7 @@ import UIKit
 
 final class KeyboardViewController: UIInputViewController {
     private let launcher: any KeyboardAppLaunching = ResponderChainAppLauncher()
-    private let consumer = KeyboardResultConsumer()
+    private let consumer = ResultConsumer()
     private var session: DictationSession?
     private var requestID: UUID?
     private var pollTask: Task<Void, Never>?
@@ -49,6 +49,7 @@ final class KeyboardViewController: UIInputViewController {
         let micRow = UIStackView(arrangedSubviews: [UIView(), mic, UIView()])
         micRow.arrangedSubviews[0].widthAnchor.constraint(equalTo: micRow.arrangedSubviews[2].widthAnchor).isActive = true
         let stack = UIStackView(arrangedSubviews: [status, micRow, row])
+        consumer.install(in: stack)
         stack.axis = .vertical
         stack.spacing = 16
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -100,8 +101,14 @@ final class KeyboardViewController: UIInputViewController {
             if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
             guard let session else { return }
             let snapshot = try session.snapshot()
-            // Resume a pending request, including after the extension was recreated.
+            if snapshot.state == .recording, let id = snapshot.request?.id {
+                _ = try session.requestStop(requestID: id)
+                return
+            }
+            if snapshot.state == .ready { consumeResult(); return }
+            // Only a new request establishes an automatic insertion target.
             let request = try snapshot.request ?? session.request()
+            if snapshot.request == nil { consumer.begin(id: request.id, proxy: textDocumentProxy) }
             requestID = request.id
             setStatus("Opening Handy…", opening: true)
             launcher.open(KeyboardHandoff.url(requestID: request.id), from: self) { [weak self] _ in
@@ -121,29 +128,40 @@ final class KeyboardViewController: UIInputViewController {
             let snapshot = try session.snapshot()
             if requestID == nil { requestID = snapshot.request?.id }
             guard let id = requestID else { return }
-            if try consumer.consume(session: session, requestID: id, insert: { textDocumentProxy.insertText($0) }) {
-                requestID = nil
-                setStatus("Inserted", symbol: "checkmark")
-                resetTask = Task { [weak self] in
-                    do { try await Task.sleep(for: .milliseconds(1500)) } catch { return }
-                    self?.setStatus("Tap the mic to dictate")
-                }
+            if try consumer.consume(session: session, proxy: textDocumentProxy, inserted: { [weak self] in self?.showInserted() }) {
+                showInserted()
             } else if snapshot.state == .idle {
                 requestID = nil
                 setStatus("Tap the mic to dictate")
+            } else if snapshot.state == .recording {
+                setStatus("Listening in handyIOS. Tap to stop.", symbol: "stop.fill")
+                mic.backgroundColor = .systemRed
+            } else if snapshot.state == .transcribing {
+                setStatus(snapshot.stopMessage.map { $0 + " Transcribing…" } ?? "Transcribing…", opening: true)
             } else if snapshot.state == .failed {
                 _ = try session.cancel(requestID: id)
                 requestID = nil
-                setStatus("Request failed. Tap the mic to try again.")
+                setStatus(snapshot.stopMessage ?? "Request failed. Tap the mic to try again.")
             }
         } catch {
             setStatus("Could not read the shared request. Try again.")
         }
     }
 
+    private func showInserted() {
+        requestID = nil
+        setStatus("Inserted", symbol: "checkmark")
+        resetTask?.cancel()
+        resetTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(1500)) } catch { return }
+            self?.setStatus("Tap the mic to dictate")
+        }
+    }
+
     private func setStatus(_ text: String, opening: Bool = false, symbol: String = "mic.fill") {
         let changed = status.text != text
         status.text = text
+        mic.backgroundColor = view.tintColor
         mic.setImage(opening ? nil : UIImage(systemName: symbol), for: .normal)
         mic.isEnabled = !opening
         if opening { progress.startAnimating() } else { progress.stopAnimating() }

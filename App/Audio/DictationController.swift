@@ -5,7 +5,7 @@ import Observation
 @MainActor @Observable
 final class DictationController: Identifiable {
     let id: UUID
-    private let shared: DictationSession
+    let shared: DictationSession
     private let capture: MicrophoneSession
     private let engine: AppMicrophoneEngine
     private let detector: any VoiceActivityDetecting
@@ -117,9 +117,11 @@ final class DictationController: Identifiable {
         audio = capture.audio
         if stopReason == .noSpeech {
             audio = []
+            capture.cancel()
             message = "No speech detected."
             state = .stopped
-            try? shared.cancel(requestID: id)
+            try? shared.setStopMessage("No speech detected", requestID: id)
+            _ = try? shared.fail(requestID: id)
             return
         }
         state = .stopped
@@ -130,8 +132,11 @@ final class DictationController: Identifiable {
         } catch {
             message = "Audio captured. Handy could not update the shared request."
         }
-        // Issue #5 consumes audio here. Do not publish a fake transcript.
+        let copy = reachedCap ? "Reached the 3-minute limit." : "Stopped after silence."
+        if stopReason == .silence || reachedCap { try? shared.setStopMessage(copy, requestID: id) }
     }
+
+    func releaseAudio() { audio = []; capture.cancel() }
 
     func cancel() {
         task?.cancel()
@@ -149,6 +154,7 @@ final class DictationController: Identifiable {
         task?.cancel()
         capture.cancel()
         audio = []
+        try? shared.setStopMessage("The microphone stopped. Try again.", requestID: id)
         try? shared.fail(requestID: id)
         state = .failed
         message = "The microphone stopped. Return to your keyboard and try again."
