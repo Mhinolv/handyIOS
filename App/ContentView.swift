@@ -12,6 +12,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             List {
+                LastResultView()
                 Section("Settings") {
                     NavigationLink {
                         ReplacementSettingsView(model: replacements)
