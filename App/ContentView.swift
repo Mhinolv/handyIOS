@@ -2,6 +2,7 @@ import HandyKit
 import SwiftUI
 
 struct ContentView: View {
+    @AppStorage(SilenceDelay.storageKey) private var silenceSeconds = SilenceDelay.defaultValue.rawValue
     @StateObject private var model = ModelDownloadManager.appDefault()
 
     @AppStorage("hasShownKeyboardSetup") private var hasShownSetup = false
@@ -10,6 +11,17 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Settings") {
+                    NavigationLink {
+                        SilenceSettingsView()
+                    } label: {
+                        LabeledContent {
+                            Text((SilenceDelay(rawValue: silenceSeconds) ?? .two).title)
+                        } label: {
+                            Label("Auto-Stop", systemImage: "waveform.badge.minus")
+                        }
+                    }
+                }
                 Section("Status") {
                     NavigationLink {
                         ModelDownloadView(model: model)
