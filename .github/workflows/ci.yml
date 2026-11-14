@@ -1,0 +1,18 @@
+name: CI
+# Owner decision 2026-11-14: keep CI light until the first published release.
+# The macOS build and test job runs only by hand (Actions > CI > Run workflow).
+# The local build and suite (Engineer, QA, and merge_pr.sh after each merge) are the gate.
+# Before the first release: add pull_request (opened, synchronize, reopened, ready_for_review) and push triggers.
+on:
+  workflow_dispatch:
+jobs:
+  ci-gate:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: ./scripts/build.sh
+      - name: Test
+        timeout-minutes: 20
+        run: ./scripts/test.sh

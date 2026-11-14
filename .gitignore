@@ -1,0 +1,12 @@
+.DS_Store
+build/
+DerivedData/
+.build/
+.swiftpm/
+*.xcodeproj/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+.team/
+*.mlmodelc/
+*.mlpackage/
+Models/
