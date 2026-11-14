@@ -82,9 +82,12 @@ public final class MicrophoneSession {
     public private(set) var stopReason: CaptureStopReason?
     private let engine: any MicrophoneEngine
     private let policy: any CaptureStopPolicy
-    public init(engine: any MicrophoneEngine, policy: any CaptureStopPolicy = ManualCaptureStopPolicy()) {
+    private let willStop: () -> Void
+    public init(engine: any MicrophoneEngine, policy: any CaptureStopPolicy = ManualCaptureStopPolicy(),
+                willStop: @escaping () -> Void = {}) {
         self.engine = engine
         self.policy = policy
+        self.willStop = willStop
     }
     public var progress: CaptureProgress { engine.progress }
     public func start() async {
@@ -105,6 +108,7 @@ public final class MicrophoneSession {
     public func stop(reason: CaptureStopReason = .userStop) {
         guard state == .recording else { return }
         stopReason = reason
+        willStop()
         audio = engine.stop()
         state = .stopped
     }

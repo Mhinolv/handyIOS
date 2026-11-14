@@ -5,7 +5,8 @@ import Observation
 @MainActor @Observable
 final class DictationController: Identifiable {
     let id: UUID
-    private let shared: DictationSession
+    let shared: DictationSession
+    let coordinator: DictationCoordinator
     private let capture: MicrophoneSession
     private let engine: AppMicrophoneEngine
     private let detector: any VoiceActivityDetecting
@@ -36,7 +37,10 @@ final class DictationController: Identifiable {
         self.detector = detector
         let engine = AppMicrophoneEngine()
         self.engine = engine
-        capture = MicrophoneSession(engine: engine, policy: policy)
+        let coordinator = DictationCoordinator(asr: FluidAudioBatchASR(),
+            background: AppTranscriptionBackgroundTask(), session: shared, id: id)
+        self.coordinator = coordinator
+        capture = MicrophoneSession(engine: engine, policy: policy, willStop: { coordinator.prepare() })
     }
 
     func start() async {
@@ -116,10 +120,13 @@ final class DictationController: Identifiable {
         stopReason = capture.stopReason
         audio = capture.audio
         if stopReason == .noSpeech {
+            coordinator.finishWithoutTranscription()
             audio = []
+            capture.cancel()
             message = "No speech detected."
             state = .stopped
-            try? shared.cancel(requestID: id)
+            try? shared.setStopMessage("No speech detected", requestID: id)
+            _ = try? shared.fail(requestID: id)
             return
         }
         state = .stopped
@@ -130,10 +137,16 @@ final class DictationController: Identifiable {
         } catch {
             message = "Audio captured. Handy could not update the shared request."
         }
-        // Issue #5 consumes audio here. Do not publish a fake transcript.
+        let copy = reachedCap ? "Reached the 3-minute limit." : "Stopped after silence."
+        if coordinator.error == nil && (stopReason == .silence || reachedCap) {
+            try? shared.setStopMessage(copy, requestID: id)
+        }
     }
 
+    func releaseAudio() { audio = []; capture.cancel() }
+
     func cancel() {
+        coordinator.cancel()
         task?.cancel()
         capture.cancel()
         audio = []
@@ -146,9 +159,11 @@ final class DictationController: Identifiable {
             capture.stop(reason: .interruption)
             stopReason = .interruption
         }
+        coordinator.finishWithoutTranscription()
         task?.cancel()
         capture.cancel()
         audio = []
+        try? shared.setStopMessage("The microphone stopped. Try again.", requestID: id)
         try? shared.fail(requestID: id)
         state = .failed
         message = "The microphone stopped. Return to your keyboard and try again."

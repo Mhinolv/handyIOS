@@ -6,7 +6,7 @@ struct DictationView: View {
     let controller: DictationController
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
-    @State private var showsTranscribing = false
+    private var coordinator: DictationCoordinator { controller.coordinator }
 
     var body: some View {
         VStack(spacing: 24) {
@@ -42,12 +42,17 @@ struct DictationView: View {
                     Image(systemName: "mic.slash").font(.system(size: 56))
                     Text("No speech detected.")
                     Button("Done") { dismiss() }
-                } else if controller.reachedCap && !showsTranscribing {
-                    Text("Reached the 3-minute limit.")
+                } else if let text = coordinator.text {
+                    ReturnHintView(title: "Text Ready")
+                    Text(text).lineLimit(3).foregroundStyle(.secondary).padding()
+                        .background(Color(uiColor: .secondarySystemBackground))
+                    Button("Done") { dismiss() }.buttonStyle(.bordered)
+                } else if let error = coordinator.error {
+                    Text(error)
+                    Button("Done") { dismiss() }.buttonStyle(.bordered)
                 } else {
-                    Text(controller.message ?? "Audio captured.")
-                    Text("Transcription is not available yet.").foregroundStyle(.secondary)
-                    Button("Done") { controller.cancel(); dismiss() }
+                    if controller.reachedCap { Text("Reached the 3-minute limit.") }
+                    ProgressView("Transcribing…")
                 }
             case .cancelled:
                 EmptyView()
@@ -63,9 +68,9 @@ struct DictationView: View {
             if controller.state == .stopped && controller.stopReason == .noSpeech {
                 UIAccessibility.post(notification: .announcement, argument: "No speech detected.")
             }
-            if controller.state == .stopped && controller.reachedCap {
-                try? await Task.sleep(for: .seconds(2))
-                showsTranscribing = true
+            if controller.state == .stopped && controller.stopReason != .noSpeech {
+                await coordinator.transcribe(samples: controller.audio)
+                controller.releaseAudio()
             }
             if controller.state == .cancelled { dismiss() }
         }

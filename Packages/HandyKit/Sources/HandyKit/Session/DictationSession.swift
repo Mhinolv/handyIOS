@@ -25,16 +25,18 @@ public struct DictationRequest: Codable, Equatable, Sendable {
 }
 
 public struct DictationSnapshot: Codable, Equatable, Sendable {
-    public let version: Int
+    public fileprivate(set) var version: Int
     public fileprivate(set) var request: DictationRequest?
     public fileprivate(set) var state: DictationState
     public fileprivate(set) var text: String?
     public fileprivate(set) var expiresAt: Date?
     /// The app observes this flag and stops capture. Only the live request can set it.
     public fileprivate(set) var stopRequested: Bool
+    public fileprivate(set) var deliveryClaim: UUID?
+    public fileprivate(set) var stopMessage: String?
 
     fileprivate static let idle = DictationSnapshot(
-        version: 1, request: nil, state: .idle, text: nil,
+        version: 2, request: nil, state: .idle, text: nil,
         expiresAt: nil, stopRequested: false
     )
 }
@@ -151,6 +153,23 @@ public final class DictationSession {
         }
     }
 
+    /// Reserve before insertion. A crash between these operations requires an explicit insert tap.
+    public func claimDelivery(requestID: UUID, token: UUID, explicit: Bool) throws -> Bool {
+        try update { slot in
+            guard slot.request?.id == requestID, slot.state == .ready,
+                  explicit || slot.deliveryClaim == nil else { return false }
+            slot.deliveryClaim = token
+            return true
+        }
+    }
+
+    public func setStopMessage(_ message: String, requestID: UUID) throws {
+        try update { slot in
+            guard slot.request?.id == requestID else { return }
+            slot.stopMessage = message
+        }
+    }
+
     private func transition(_ id: UUID, from: DictationState, to: DictationState) throws -> Bool {
         try update { slot in
             guard slot.request?.id == id, slot.state == from else { return false }
@@ -165,7 +184,8 @@ public final class DictationSession {
     private func update<T>(_ body: (inout DictationSnapshot) throws -> T) throws -> T {
         try storage.transaction { data in
             var slot = try data.map { try JSONDecoder().decode(DictationSnapshot.self, from: $0) } ?? .idle
-            guard slot.version == 1 else { throw DictationProtocolError.unsupportedVersion(slot.version) }
+            guard [1, 2].contains(slot.version) else { throw DictationProtocolError.unsupportedVersion(slot.version) }
+            slot.version = 2
             if let expiry = slot.expiresAt {
                 // Keyboard polls must preserve the slot while the app releases capture.
                 let expired = slot.state == .recording

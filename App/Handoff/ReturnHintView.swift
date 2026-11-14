@@ -2,13 +2,14 @@ import SwiftUI
 
 struct ReturnHintView: View {
     var compact = false
+    var title = "Go Back to Your App"
 
     var body: some View {
         VStack(spacing: compact ? 8 : 24) {
             Image(systemName: "arrow.uturn.backward.circle")
                 .font(.system(size: compact ? 24 : 56))
                 .accessibilityHidden(true)
-            Text("Go Back to Your App")
+            Text(title)
                 .font(compact ? .headline : .title)
             Text("Tap ◀ in the top-left corner, or swipe right on the bottom edge of the screen.")
                 .foregroundStyle(.secondary)
