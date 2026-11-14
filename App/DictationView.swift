@@ -38,7 +38,7 @@ struct DictationView: View {
                 if controller.reachedCap && !showsTranscribing {
                     Text("Reached the 3-minute limit.")
                 } else {
-                    Text("Audio captured.")
+                    Text(controller.message ?? "Audio captured.")
                     Text("Transcription is not available yet.").foregroundStyle(.secondary)
                     Button("Done") { controller.cancel(); dismiss() }
                 }

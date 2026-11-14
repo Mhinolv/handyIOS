@@ -19,6 +19,43 @@ final class DictationSessionTests: XCTestCase {
         }
     }
 
+    // QA repro: keyboard polls after the deadline, before the app completes capture.
+    func testKeyboardPollClearsSlotBeforeAppFinishesCapture() throws {
+        let clock = Clock()
+        let storage = Storage()
+        let app = DictationSession(storage: storage, clock: clock)
+        let keyboard = DictationSession(storage: storage, clock: clock)
+        let request = try app.request()
+        XCTAssertTrue(try app.startRecording(requestID: request.id))
+        clock.now.addTimeInterval(180.05)
+        _ = try keyboard.snapshot()
+        XCTAssertTrue(try app.finishCapture(requestID: request.id))
+    }
+
+    func testCaptureGraceBoundaryPreservesSlotAndAudioCompletion() throws {
+        let clock = Clock()
+        let storage = Storage()
+        let app = DictationSession(storage: storage, clock: clock)
+        let keyboard = DictationSession(storage: storage, clock: clock)
+        let request = try app.request()
+        XCTAssertTrue(try app.startRecording(requestID: request.id))
+        clock.now.addTimeInterval(180 + DictationSession.captureCompletionGrace)
+        XCTAssertEqual(try keyboard.snapshot().state, .recording)
+        XCTAssertThrowsError(try keyboard.request())
+        XCTAssertTrue(try app.finishCapture(requestID: request.id))
+        XCTAssertEqual(try keyboard.snapshot().state, .transcribing)
+    }
+
+    func testCaptureCannotFinishAfterGraceWithoutKeyboardPoll() throws {
+        let clock = Clock()
+        let session = DictationSession(storage: Storage(), clock: clock)
+        let request = try session.request()
+        XCTAssertTrue(try session.startRecording(requestID: request.id))
+        clock.now.addTimeInterval(180 + DictationSession.captureCompletionGrace + 0.001)
+        XCTAssertFalse(try session.finishCapture(requestID: request.id))
+        XCTAssertEqual(try session.snapshot().state, .idle)
+    }
+
     func testCaptureCompletionAfterTimerDelayKeepsRequest() throws {
         let clock = Clock()
         let session = DictationSession(storage: Storage(), clock: clock)
@@ -80,14 +117,14 @@ final class DictationSessionTests: XCTestCase {
         XCTAssertEqual(try session.snapshot().state, .idle)
     }
 
-    func testCaptureExpiryAfterThreeMinutesRejectsLateResult() throws {
+    func testCaptureExpiryAfterGraceRejectsLateResult() throws {
         let clock = Clock()
         let session = DictationSession(storage: Storage(), clock: clock)
         let request = try session.request()
         XCTAssertTrue(try session.startRecording(requestID: request.id))
         clock.now.addTimeInterval(179.999)
         XCTAssertEqual(try session.snapshot().state, .recording)
-        clock.now.addTimeInterval(0.002)
+        clock.now.addTimeInterval(DictationSession.captureCompletionGrace + 0.002)
         XCTAssertFalse(try session.requestStop(requestID: request.id))
         XCTAssertFalse(try session.publish(text: "Late", requestID: request.id))
         XCTAssertEqual(try session.snapshot().state, .idle)

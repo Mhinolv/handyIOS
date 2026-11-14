@@ -27,7 +27,12 @@ final class DictationController: Identifiable {
         state = .askingPermission
         await capture.start()
         state = capture.state
-        guard state == .recording else { return }
+        guard state == .recording else {
+            if state == .denied || state == .failed {
+                _ = try? shared.fail(requestID: id)
+            }
+            return
+        }
         do {
             guard try shared.startRecording(requestID: id) else { cancel(); return }
         } catch { fail(); return }
@@ -45,10 +50,9 @@ final class DictationController: Identifiable {
     private func update() {
         let duration = startedAt.map { Double($0.duration(to: .now).components.seconds) } ?? 0
         elapsed = min(180, Int(max(capture.progress.elapsed, duration)))
-        if elapsed >= 180 {
+        if elapsed >= Int(DictationSession.maximumDictationDuration - DictationSession.captureStopMargin) {
             capture.stop()
-            finish()
-            reachedCap = true
+            finish(atCap: true)
             return
         }
         level = Double(capture.progress.level)
@@ -67,14 +71,18 @@ final class DictationController: Identifiable {
         finish()
     }
 
-    private func finish() {
+    private func finish(atCap: Bool = false) {
         task?.cancel()
-        reachedCap = capture.reachedCap
+        reachedCap = atCap || capture.reachedCap
         audio = capture.audio
         state = .stopped
         do {
-            guard try shared.finishCapture(requestID: id) else { fail(); return }
-        } catch { fail() }
+            if try !shared.finishCapture(requestID: id) {
+                message = "Audio captured. The shared request is no longer available."
+            }
+        } catch {
+            message = "Audio captured. Handy could not update the shared request."
+        }
         // Issue #5 consumes audio here. Do not publish a fake transcript.
     }
 
