@@ -14,8 +14,18 @@ public protocol ModelTransport: Sendable {
 public protocol ModelStorage: Sendable {
     func availableBytes() async throws -> Int64
     func validates(_ asset: ModelAsset) async throws -> Bool
+    func validates(_ manifest: ModelManifest, useMarker: Bool) async throws -> Bool
     /// Validate the temporary file before atomic publication. Always remove the temporary file.
     func install(_ temporary: URL, asset: ModelAsset) async throws
+}
+
+public extension ModelStorage {
+    func validates(_ manifest: ModelManifest, useMarker: Bool) async throws -> Bool {
+        for asset in manifest.assets {
+            guard try await validates(asset) else { return false }
+        }
+        return manifest.isConfigured
+    }
 }
 
 public enum ModelDownloadError: Error { case corrupt, http, noSpace }
@@ -47,10 +57,7 @@ public final class ModelDownloadManager: ObservableObject {
         state = .checking
         do {
             availableBytes = try await storage.availableBytes()
-            var valid = true
-            for asset in manifest.assets {
-                if try await !storage.validates(asset) { valid = false }
-            }
+            let valid = try await storage.validates(manifest, useMarker: true)
             guard task == nil, generation == token else { return }
             state = valid ? .ready : .notDownloaded
         } catch { if task == nil, generation == token { state = .stopped } }
@@ -79,6 +86,7 @@ public final class ModelDownloadManager: ObservableObject {
 
     private func run(_ token: UUID) async {
         guard generation == token, !Task.isCancelled else { return }
+        var remainingBytes = manifest.totalBytes
         do {
             state = .checking
             var pending: [ModelAsset] = []
@@ -87,6 +95,7 @@ public final class ModelDownloadManager: ObservableObject {
                 try Task.checkCancellation()
             }
             let required = pending.reduce(Int64(0)) { $0 + $1.byteCount }
+            remainingBytes = required
             availableBytes = try await storage.availableBytes()
             try Task.checkCancellation()
             guard availableBytes >= required else {
@@ -115,21 +124,35 @@ public final class ModelDownloadManager: ObservableObject {
                 state = .checking
                 try await storage.install(temporary, asset: asset)
                 try Task.checkCancellation()
+                remainingBytes -= asset.byteCount
                 completed += asset.byteCount
                 state = .downloading(received: completed, total: manifest.totalBytes)
             }
             state = .checking
-            for asset in manifest.assets {
-                guard try await storage.validates(asset) else { throw ModelDownloadError.corrupt }
-                try Task.checkCancellation()
-            }
+            guard try await storage.validates(manifest, useMarker: false) else { throw ModelDownloadError.corrupt }
+            try Task.checkCancellation()
             if generation == token { state = .ready }
         } catch {
             guard generation == token else { return }
             if error is CancellationError { state = .notDownloaded }
             else if case ModelDownloadError.corrupt = error { state = .corrupt }
-            else if case ModelDownloadError.noSpace = error { state = .lowSpace(missing: 1) }
+            else if Self.isNoSpace(error) {
+                guard let free = try? await storage.availableBytes() else {
+                    if generation == token { state = .stopped }
+                    return
+                }
+                guard generation == token else { return }
+                availableBytes = free
+                state = .lowSpace(missing: max(0, remainingBytes - free))
+            }
             else { state = .stopped }
         }
+    }
+
+    private static func isNoSpace(_ error: Error) -> Bool {
+        if case ModelDownloadError.noSpace = error { return true }
+        let error = error as NSError
+        return (error.domain == NSCocoaErrorDomain && error.code == NSFileWriteOutOfSpaceError)
+            || (error.domain == NSPOSIXErrorDomain && error.code == 28)
     }
 }

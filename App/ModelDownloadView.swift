@@ -15,7 +15,11 @@ struct ModelDownloadView: View {
             Section {
                 status
                 if case .downloading = model.state {
-                    Button("Cancel") { model.cancel() }.buttonStyle(.bordered)
+                    Button { model.cancel() } label: {
+                        Text("Cancel").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                 } else if model.state != .checking && model.state != .ready {
                     Button(model.state == .notDownloaded ? "Download" : "Retry") { model.start() }
                         .buttonStyle(.borderedProminent)
