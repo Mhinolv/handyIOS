@@ -2,6 +2,9 @@ import HandyKit
 import UIKit
 
 final class KeyboardViewController: UIInputViewController {
+    #if DEBUG
+    var snapshotName: String?
+    #endif
     private let launcher: any KeyboardAppLaunching = ResponderChainAppLauncher()
     private let consumer = ResultConsumer()
     private var session: DictationSession?
@@ -79,6 +82,27 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        #if DEBUG
+        if let snapshotName {
+            globe.isHidden = false
+            manual.update(fullAccess: true, needsGlobe: true)
+            switch snapshotName {
+            case "keyboard-opening": setStatus("Opening Handy…", opening: true)
+            case "keyboard-listening":
+                setStatus("Listening in handyIOS. Tap to stop.", symbol: "stop.fill")
+                mic.backgroundColor = .systemRed
+            case "keyboard-inserted": setStatus("Inserted", symbol: "checkmark")
+            case "keyboard-full-access-off":
+                setStatus(KeyboardAccessStatus.message(fullAccess: false, manual: false, requestPending: false) ?? "")
+            case "keyboard-abc": dictationPanel.isHidden = true; manual.isHidden = false
+            default: setStatus("Tap the mic to dictate")
+            }
+            if snapshotName != "keyboard-full-access-off" && snapshotName != "keyboard-opening" {
+                mic.setImage(UIImage(systemName: snapshotName == "keyboard-listening" ? "stop.fill" : snapshotName == "keyboard-inserted" ? "checkmark" : "mic.fill"), for: .normal)
+            }
+            return
+        }
+        #endif
         globe.isHidden = !needsInputModeSwitchKey
         refreshAccess()
         pollTask?.cancel()

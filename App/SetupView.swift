@@ -8,7 +8,7 @@ struct SetupView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
     @State private var confirmed = false
-    @State private var microphone = AVAudioApplication.shared.recordPermission
+    @State private var microphone = Self.initialPermission
     @State private var sample = ""
     @State private var settingsFailed = false
 
@@ -93,7 +93,17 @@ struct SetupView: View {
         .accessibilityValue(done ? "Done" : "Not confirmed")
     }
 
+    private static var initialPermission: AVAudioApplication.recordPermission {
+        #if DEBUG
+        if SnapshotState.requested != nil { return .undetermined }
+        #endif
+        return AVAudioApplication.shared.recordPermission
+    }
+
     private func refresh() {
+        #if DEBUG
+        if SnapshotState.requested != nil { return }
+        #endif
         confirmed = UserDefaults(suiteName: HandyConfiguration.appGroupIdentifier)?
             .bool(forKey: HandyConfiguration.keyboardSeenWithFullAccessKey) ?? false
         microphone = AVAudioApplication.shared.recordPermission

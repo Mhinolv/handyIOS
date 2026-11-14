@@ -1,0 +1,104 @@
+#if DEBUG
+import HandyKit
+import SwiftUI
+
+/// Keep this list identical to scripts/snapshot.sh.
+enum SnapshotState: String {
+    case setup
+    case modelNotDownloaded = "model-not-downloaded", modelDownloading = "model-downloading"
+    case modelFailed = "model-failed", modelReady = "model-ready"
+    case listening, transcribing, textReady = "text-ready", recovery
+    case lastResult = "last-result", silenceSettings = "silence-settings", replacements, licenses
+    case keyboardIdle = "keyboard-idle", keyboardOpening = "keyboard-opening"
+    case keyboardListening = "keyboard-listening", keyboardInserted = "keyboard-inserted"
+    case keyboardFullAccessOff = "keyboard-full-access-off", keyboardABC = "keyboard-abc"
+
+    static var requested: SnapshotState? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "-HandySnapshotState"),
+              arguments.indices.contains(index + 1) else { return nil }
+        return SnapshotState(rawValue: arguments[index + 1])
+    }
+}
+
+struct SnapshotHost: View {
+    let state: SnapshotState
+    private let sample = "Meet me at the library at three. Bring the notes for our next project."
+    var body: some View {
+        NavigationStack {
+            switch state {
+            case .setup: SetupView()
+            case .modelNotDownloaded, .modelDownloading, .modelFailed, .modelReady:
+                ModelDownloadView(model: ModelDownloadManager(manifest: .production,
+                    transport: SnapshotTransport(), storage: SnapshotModelStorage()), snapshotState: modelState)
+            case .listening: DictationStatusView(state: .recording)
+            case .transcribing: DictationStatusView(state: .stopped, transcribing: true)
+            case .textReady: DictationStatusView(state: .stopped, text: sample)
+            case .recovery: DictationStatusView(state: .stopped, recovery: .interruption)
+            case .lastResult:
+                List { LastResultView(snapshot: lastResult) }.navigationTitle("handyIOS")
+            case .silenceSettings:
+                SilenceSettingsView().defaultAppStorage(UserDefaults(suiteName: "HandySnapshot")!)
+            case .replacements:
+                ReplacementSettingsView(model: ReplacementSettingsModel(storage: SnapshotReplacements()))
+            case .licenses: ModelNoticesView()
+            default:
+                VStack(alignment: .leading) {
+                    Text("Try the keyboard").font(.headline).padding()
+                    Text(state == .keyboardInserted ? sample : "Your text appears here.").padding()
+                    Spacer()
+                    SnapshotKeyboard(name: state.rawValue).frame(height: state == .keyboardABC ? 290 : 220)
+                        .background(Color(uiColor: .secondarySystemBackground))
+                }.navigationTitle("Keyboard")
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var modelState: ModelDownloadState {
+        switch state {
+        case .modelDownloading: .downloading(received: 300_000_000, total: ModelManifest.production.totalBytes)
+        case .modelFailed: .stopped
+        case .modelReady: .ready
+        default: .notDownloaded
+        }
+    }
+    private var lastResult: LastResult? {
+        let session = DictationSession(storage: SnapshotSessionStorage())
+        guard let request = try? session.request() else { return nil }
+        _ = try? session.startRecording(requestID: request.id)
+        _ = try? session.finishCapture(requestID: request.id)
+        _ = try? session.publish(text: sample, requestID: request.id)
+        return try? session.lastResult()
+    }
+}
+
+private struct SnapshotKeyboard: UIViewControllerRepresentable {
+    let name: String
+    func makeUIViewController(context: Context) -> KeyboardViewController {
+        let controller = KeyboardViewController()
+        controller.snapshotName = name
+        return controller
+    }
+    func updateUIViewController(_ controller: KeyboardViewController, context: Context) {}
+}
+
+private final class SnapshotSessionStorage: SessionStorage {
+    private var data: Data?
+    func transaction<T>(_ body: (inout Data?) throws -> T) throws -> T { try body(&data) }
+}
+private struct SnapshotTransport: ModelTransport {
+    func download(_ asset: ModelAsset, progress: @escaping @Sendable (Int64) -> Void) async throws -> URL {
+        throw ModelDownloadError.http
+    }
+}
+private struct SnapshotModelStorage: ModelStorage {
+    func availableBytes() async throws -> Int64 { 12_000_000_000 }
+    func validates(_ asset: ModelAsset) async throws -> Bool { false }
+    func install(_ temporary: URL, asset: ModelAsset) async throws {}
+}
+private struct SnapshotReplacements: ReplacementRuleStorage {
+    func load() -> [ReplacementRule] { [ReplacementRule(phrase: "handy ios", replacement: "handyIOS")] }
+    func save(_ rules: [ReplacementRule]) throws {}
+}
+#endif

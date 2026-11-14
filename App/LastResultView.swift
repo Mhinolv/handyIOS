@@ -16,6 +16,14 @@ struct LastResultView: View {
     @State private var showDiscard = false
     @State private var storageError: String?
 
+    #if DEBUG
+    private var snapshotResult = false
+    init(snapshot: LastResult? = nil) {
+        _result = State(initialValue: snapshot)
+        snapshotResult = snapshot != nil
+    }
+    #endif
+
     var body: some View {
         Group {
             if let result {
@@ -99,6 +107,9 @@ struct LastResultView: View {
     }
 
     private func refresh() {
+        #if DEBUG
+        if snapshotResult { return }
+        #endif
         do {
             if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
             let latest = try session?.lastResult()
