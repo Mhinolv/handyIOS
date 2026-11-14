@@ -19,6 +19,27 @@ final class DictationSessionTests: XCTestCase {
         }
     }
 
+    func testCaptureCompletionAfterTimerDelayKeepsRequest() throws {
+        let clock = Clock()
+        let session = DictationSession(storage: Storage(), clock: clock)
+        let request = try session.request()
+        XCTAssertTrue(try session.startRecording(requestID: request.id))
+        clock.now.addTimeInterval(180.2)
+        XCTAssertTrue(try session.finishCapture(requestID: request.id))
+        XCTAssertEqual(try session.snapshot().state, .transcribing)
+        XCTAssertFalse(try session.finishCapture(requestID: request.id))
+    }
+
+    func testCaptureCompletionCannotReviveCancelledRequest() throws {
+        let session = DictationSession(storage: Storage())
+        let request = try session.request()
+        XCTAssertTrue(try session.startRecording(requestID: request.id))
+        XCTAssertTrue(try session.cancel(requestID: request.id))
+        let next = try session.request()
+        XCTAssertFalse(try session.finishCapture(requestID: request.id))
+        XCTAssertEqual(try session.snapshot().request?.id, next.id)
+    }
+
     func testLifecycleAcrossClientsAndAcknowledgement() throws {
         let storage = Storage()
         let clock = Clock()

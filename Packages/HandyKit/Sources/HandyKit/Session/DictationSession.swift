@@ -93,6 +93,22 @@ public final class DictationSession {
         try transition(requestID, from: .recording, to: .transcribing)
     }
 
+    /// Only the app that owns bounded capture may call this after it releases the microphone.
+    /// Timer delivery can follow the deadline. Preserve captured audio without reviving a replaced request.
+    @discardableResult
+    public func finishCapture(requestID: UUID) throws -> Bool {
+        try storage.transaction { data in
+            guard let dataValue = data else { return false }
+            var slot = try JSONDecoder().decode(DictationSnapshot.self, from: dataValue)
+            guard slot.version == 1 else { throw DictationProtocolError.unsupportedVersion(slot.version) }
+            guard slot.request?.id == requestID, slot.state == .recording else { return false }
+            slot.state = .transcribing
+            slot.expiresAt = clock.now.addingTimeInterval(Self.maximumTranscriptionDuration)
+            data = try JSONEncoder().encode(slot)
+            return true
+        }
+    }
+
     @discardableResult
     public func requestStop(requestID: UUID) throws -> Bool {
         try update { slot in

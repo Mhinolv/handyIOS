@@ -1,19 +1,21 @@
 import SwiftUI
 
 struct ReturnHintView: View {
+    var compact = false
+
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: compact ? 8 : 24) {
             Image(systemName: "arrow.uturn.backward.circle")
-                .font(.system(size: 56))
+                .font(.system(size: compact ? 24 : 56))
                 .accessibilityHidden(true)
             Text("Go Back to Your App")
-                .font(.title)
+                .font(compact ? .headline : .title)
             Text("Tap ◀ in the top-left corner, or swipe right on the bottom edge of the screen.")
                 .foregroundStyle(.secondary)
         }
         .multilineTextAlignment(.center)
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(compact ? 8 : 32)
+        .frame(maxWidth: .infinity, maxHeight: compact ? nil : .infinity)
         .background(.background)
     }
 }
