@@ -8,6 +8,8 @@ final class AppMicrophoneEngine: MicrophoneEngine {
     private var hasTap = false
     var progress: CaptureProgress { buffer.progress }
 
+    func drainVADSamples() -> [Float] { buffer.drainNewSamples() }
+
     func requestPermission() async -> Bool {
         await AVAudioApplication.requestRecordPermission()
     }

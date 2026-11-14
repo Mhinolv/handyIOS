@@ -19,7 +19,14 @@ public struct CaptureProgress: Sendable {
 }
 
 public protocol CaptureStopPolicy {
+    func microphoneReady()
+    var stopReason: CaptureStopReason? { get }
     func shouldStop(_ progress: CaptureProgress) -> Bool
+}
+
+public extension CaptureStopPolicy {
+    func microphoneReady() {}
+    var stopReason: CaptureStopReason? { nil }
 }
 
 public struct ManualCaptureStopPolicy: CaptureStopPolicy {
@@ -33,6 +40,7 @@ public final class CaptureBuffer: @unchecked Sendable {
     private let lock = NSLock()
     private var samples: [Float] = []
     private var level: Float = 0
+    private var readOffset = 0
     public init() {}
     public func append(_ input: [Float]) {
         lock.lock()
@@ -46,11 +54,20 @@ public final class CaptureBuffer: @unchecked Sendable {
         defer { lock.unlock() }
         return CaptureProgress(sampleCount: samples.count, level: min(1, level))
     }
+    /// Read each captured sample once for VAD without removing the transcription audio.
+    public func drainNewSamples() -> [Float] {
+        lock.lock()
+        defer { lock.unlock() }
+        let result = Array(samples[readOffset...])
+        readOffset = samples.count
+        return result
+    }
     public func take() -> [Float] {
         lock.lock()
         defer { lock.unlock() }
         let result = samples
         samples = []
+        readOffset = 0
         level = 0
         return result
     }
@@ -62,6 +79,7 @@ public final class MicrophoneSession {
     public private(set) var state: State = .idle
     public private(set) var audio: [Float] = []
     public private(set) var reachedCap = false
+    public private(set) var stopReason: CaptureStopReason?
     private let engine: any MicrophoneEngine
     private let policy: any CaptureStopPolicy
     public init(engine: any MicrophoneEngine, policy: any CaptureStopPolicy = ManualCaptureStopPolicy()) {
@@ -75,16 +93,18 @@ public final class MicrophoneSession {
         let allowed = await engine.requestPermission()
         guard state == .askingPermission else { return }
         guard allowed else { state = .denied; return }
-        do { try engine.start(); state = .recording }
+        do { try engine.start(); policy.microphoneReady(); state = .recording }
         catch { _ = engine.stop(); state = .failed }
     }
     public func tick() {
         guard state == .recording else { return }
         reachedCap = progress.sampleCount >= CaptureBuffer.maximumSamples
-        if reachedCap || policy.shouldStop(progress) { stop() }
+        if reachedCap { stop(reason: .durationCap) }
+        else if policy.shouldStop(progress) { stop(reason: policy.stopReason ?? .silence) }
     }
-    public func stop() {
+    public func stop(reason: CaptureStopReason = .userStop) {
         guard state == .recording else { return }
+        stopReason = reason
         audio = engine.stop()
         state = .stopped
     }
