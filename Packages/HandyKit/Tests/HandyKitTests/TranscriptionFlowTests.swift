@@ -46,6 +46,26 @@ final class TranscriptionFlowTests: XCTestCase {
         }
         func cleanup() { cleaned = true }
     }
+    func testEmptyInterruptedAudioShowsNoSpeechWithoutRetry() throws {
+        let session = DictationSession(storage: DictationSessionTests.Storage())
+        let id = try session.request().id
+        let flow = TranscriptionFlow(asr: ASR(), background: Background(), session: session, id: id)
+        flow.retain(samples: [], reason: .interruption)
+        XCTAssertEqual(flow.error, "No speech detected")
+        XCTAssertNil(flow.recovery)
+        XCTAssertEqual(try session.snapshot().stopMessage, "No speech detected")
+    }
+
+    func testEmptyBatchShowsNoSpeech() async throws {
+        let session = DictationSession(storage: DictationSessionTests.Storage())
+        let id = try session.request().id
+        let flow = TranscriptionFlow(asr: ASR(fails: true), background: Background(), session: session, id: id)
+        flow.prepare()
+        await flow.transcribe(samples: [])
+        XCTAssertEqual(flow.error, "No speech detected")
+        XCTAssertNil(flow.recovery)
+    }
+
     func testInterruptedAudioRetriesWithoutRecordingAndDiscardClearsFailure() async throws {
         for reason in [DictationRecovery.interruption, .route, .expiry, .transcription] {
             let session = DictationSession(storage: DictationSessionTests.Storage())

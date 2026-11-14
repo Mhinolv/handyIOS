@@ -48,6 +48,7 @@ public final class TranscriptionFlow {
     public func transcribe(samples: [Float]) async {
         guard !transcribing, text == nil else { return }
         if terminal && error == nil { return }
+        guard !samples.isEmpty else { finishNoSpeech(); return }
         retainedAudio = samples
         guard !terminal else { return }
         guard prepared else { finishFailure("Background time unavailable. Return to handyIOS to retry."); return }
@@ -68,7 +69,7 @@ public final class TranscriptionFlow {
             guard !terminal else { return }
             try Task.checkCancellation()
             guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                finishFailure("No speech detected")
+                finishNoSpeech()
                 return
             }
             let finalText = PhraseReplacement.apply(result.text, rules: replacements.load())
@@ -90,6 +91,7 @@ public final class TranscriptionFlow {
 
     public func retain(samples: [Float], reason: DictationRecovery) {
         guard !transcribing, text == nil else { return }
+        guard !samples.isEmpty else { finishNoSpeech(); return }
         retainedAudio = samples
         recovery = reason
         terminal = true
@@ -130,6 +132,16 @@ public final class TranscriptionFlow {
         worker?.cancel()
         finishFailure("Background time expired. Return to handyIOS to retry.")
         Task { await asr.cancel() }
+    }
+
+    private func finishNoSpeech() {
+        terminal = true
+        error = "No speech detected"
+        recovery = nil
+        retainedAudio = []
+        try? session.setStopMessage("No speech detected", requestID: id)
+        _ = try? session.fail(requestID: id)
+        background.end()
     }
 
     private func finishFailure(_ message: String) {
