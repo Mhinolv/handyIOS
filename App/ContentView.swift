@@ -26,6 +26,11 @@ struct ContentView: View {
                         LabeledContent("Model", value: model.state == .ready ? "Ready" : "Not Downloaded")
                     }
                 }
+                Section("About") {
+                    NavigationLink { ModelNoticesView() } label: {
+                        Label("Acknowledgements", systemImage: "doc.text")
+                    }
+                }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("handyIOS")
