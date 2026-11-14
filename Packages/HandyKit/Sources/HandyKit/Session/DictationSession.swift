@@ -34,9 +34,11 @@ public struct DictationSnapshot: Codable, Equatable, Sendable {
     public fileprivate(set) var stopRequested: Bool
     public fileprivate(set) var deliveryClaim: UUID?
     public fileprivate(set) var stopMessage: String?
+    public fileprivate(set) var heartbeatAt: Date?
+    public fileprivate(set) var recoveryAvailable: Bool?
 
     fileprivate static let idle = DictationSnapshot(
-        version: 2, request: nil, state: .idle, text: nil,
+        version: 3, request: nil, state: .idle, text: nil,
         expiresAt: nil, stopRequested: false
     )
 }
@@ -170,10 +172,58 @@ public final class DictationSession {
         }
     }
 
+    public func heartbeat(requestID: UUID) throws {
+        try update { slot in
+            guard slot.request?.id == requestID else { return }
+            slot.heartbeatAt = clock.now
+        }
+    }
+
+    public func recover(requestID: UUID, message: String) throws {
+        try update { slot in
+            guard slot.request?.id == requestID else { return }
+            slot.state = .failed
+            slot.recoveryAvailable = true
+            slot.stopMessage = message
+        }
+    }
+
+    public func retry(requestID: UUID) throws -> Bool {
+        try update { slot in
+            guard slot.request?.id == requestID, slot.state == .failed,
+                  slot.recoveryAvailable == true else { return false }
+            slot.state = .transcribing
+            slot.recoveryAvailable = false
+            slot.heartbeatAt = clock.now
+            slot.stopMessage = nil
+            slot.expiresAt = clock.now.addingTimeInterval(Self.maximumTranscriptionDuration)
+            return true
+        }
+    }
+
+    /// Pure clock-driven keyboard checks. They never revive expired identities.
+    public func checkLiveness() throws -> String? {
+        try update { slot in
+            if slot.state == .requested, let request = slot.request,
+               clock.now.timeIntervalSince(request.createdAt) >= 5 {
+                slot = .idle
+                return "Could not open handyIOS. Tap the mic to try again."
+            }
+            if [.recording, .transcribing].contains(slot.state),
+               let heartbeat = slot.heartbeatAt,
+               clock.now.timeIntervalSince(heartbeat) >= 5 {
+                slot = .idle
+                return "handyIOS stopped. Tap the mic to try again."
+            }
+            return nil
+        }
+    }
+
     private func transition(_ id: UUID, from: DictationState, to: DictationState) throws -> Bool {
         try update { slot in
             guard slot.request?.id == id, slot.state == from else { return false }
             slot.state = to
+            slot.heartbeatAt = clock.now
             let duration = to == .recording
                 ? Self.maximumDictationDuration : Self.maximumTranscriptionDuration
             slot.expiresAt = clock.now.addingTimeInterval(duration)
@@ -184,8 +234,8 @@ public final class DictationSession {
     private func update<T>(_ body: (inout DictationSnapshot) throws -> T) throws -> T {
         try storage.transaction { data in
             var slot = try data.map { try JSONDecoder().decode(DictationSnapshot.self, from: $0) } ?? .idle
-            guard [1, 2].contains(slot.version) else { throw DictationProtocolError.unsupportedVersion(slot.version) }
-            slot.version = 2
+            guard [1, 2, 3].contains(slot.version) else { throw DictationProtocolError.unsupportedVersion(slot.version) }
+            slot.version = 3
             if let expiry = slot.expiresAt {
                 // Keyboard polls must preserve the slot while the app releases capture.
                 let expired = slot.state == .recording

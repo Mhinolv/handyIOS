@@ -119,6 +119,11 @@ final class KeyboardViewController: UIInputViewController {
             if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
             guard let session else { return }
             let snapshot = try session.snapshot()
+            if let message = try session.checkLiveness() {
+                requestID = nil
+                setStatus(message)
+                return
+            }
             if snapshot.state == .recording, let id = snapshot.request?.id {
                 _ = try session.requestStop(requestID: id)
                 return
@@ -130,6 +135,7 @@ final class KeyboardViewController: UIInputViewController {
             requestID = request.id
             setStatus("Opening Handy…", opening: true)
             launcher.open(KeyboardHandoff.url(requestID: request.id), from: self) { [weak self] _ in
+                guard self?.requestID == request.id else { return }
                 // URL success does not imply an automatic return to the host.
                 self?.setStatus("Open Handy, then come back.")
             }
@@ -143,6 +149,11 @@ final class KeyboardViewController: UIInputViewController {
         do {
             if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
             guard let session else { return }
+            if let message = try session.checkLiveness() {
+                requestID = nil
+                setStatus(message)
+                return
+            }
             let snapshot = try session.snapshot()
             if requestID == nil { requestID = snapshot.request?.id }
             guard let id = requestID else { return }
@@ -157,9 +168,14 @@ final class KeyboardViewController: UIInputViewController {
             } else if snapshot.state == .transcribing {
                 setStatus(snapshot.stopMessage.map { $0 + " Transcribing…" } ?? "Transcribing…", opening: true)
             } else if snapshot.state == .failed {
-                _ = try session.cancel(requestID: id)
-                requestID = nil
-                setStatus(snapshot.stopMessage ?? "Request failed. Tap the mic to try again.")
+                if snapshot.recoveryAvailable == true {
+                    setStatus("Open handyIOS to finish.", symbol: "exclamationmark.circle")
+                    mic.backgroundColor = .systemOrange
+                } else {
+                    _ = try session.cancel(requestID: id)
+                    requestID = nil
+                    setStatus(snapshot.stopMessage ?? "Request failed. Tap the mic to try again.")
+                }
             }
         } catch {
             setStatus("Could not read the shared request. Try again.")

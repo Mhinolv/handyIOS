@@ -46,6 +46,61 @@ final class TranscriptionFlowTests: XCTestCase {
         }
         func cleanup() { cleaned = true }
     }
+    func testInterruptedAudioRetriesWithoutRecordingAndDiscardClearsFailure() async throws {
+        for reason in [DictationRecovery.interruption, .route, .expiry, .transcription] {
+            let session = DictationSession(storage: DictationSessionTests.Storage())
+            let id = try session.request().id
+            _ = try session.startRecording(requestID: id)
+            let flow = TranscriptionFlow(asr: ASR(), background: Background(), session: session, id: id)
+            flow.retain(samples: [0.1], reason: reason)
+            XCTAssertEqual(try session.snapshot().state, .failed)
+            XCTAssertEqual(flow.retainedAudio, [0.1])
+            XCTAssertNil(flow.text)
+            await flow.retry()
+            XCTAssertEqual(try session.snapshot().state, .ready)
+            XCTAssertEqual(flow.text, "Hello")
+            XCTAssertTrue(flow.retainedAudio.isEmpty)
+        }
+        let session = DictationSession(storage: DictationSessionTests.Storage())
+        let id = try session.request().id
+        let flow = TranscriptionFlow(asr: ASR(), background: Background(), session: session, id: id)
+        flow.retain(samples: [0.1], reason: .expiry)
+        flow.cancel()
+        XCTAssertEqual(try session.snapshot().state, .idle)
+        XCTAssertTrue(flow.retainedAudio.isEmpty)
+        await flow.retry()
+        XCTAssertNil(flow.text)
+    }
+
+    func testExpiredRecoveryCannotReviveRequest() async throws {
+        let clock = RecoveryTests.Clock()
+        let session = DictationSession(storage: DictationSessionTests.Storage(), clock: clock)
+        let id = try session.request().id
+        let flow = TranscriptionFlow(asr: ASR(), background: Background(), session: session, id: id)
+        flow.retain(samples: [0.1], reason: .interruption)
+        clock.now = clock.now.addingTimeInterval(181)
+        await flow.retry()
+        XCTAssertTrue(flow.retainedAudio.isEmpty)
+        XCTAssertNil(flow.text)
+        XCTAssertEqual(try session.snapshot().state, .idle)
+    }
+
+    func testRetryAfterBackgroundDenialUsesRetainedAudio() async throws {
+        let session = DictationSession(storage: DictationSessionTests.Storage())
+        let id = try session.request().id
+        _ = try session.startRecording(requestID: id)
+        let background = Background()
+        background.granted = false
+        let flow = TranscriptionFlow(asr: ASR(), background: background, session: session, id: id)
+        flow.prepare()
+        await flow.transcribe(samples: [0.25])
+        XCTAssertEqual(flow.recovery, .expiry)
+        background.granted = true
+        await flow.retry()
+        XCTAssertEqual(flow.text, "Hello")
+        XCTAssertEqual(try session.snapshot().state, .ready)
+    }
+
     func testBackgroundBeginsBeforeCaptureFinishesAndEndsOnSuccess() async throws {
         let session = DictationSession(storage: DictationSessionTests.Storage())
         let id = try session.request().id

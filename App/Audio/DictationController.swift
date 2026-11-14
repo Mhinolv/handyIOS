@@ -19,6 +19,7 @@ final class DictationController: Identifiable {
         if silencePolicy.delay == .off { return "Tap Stop when you finish." }
         return hasSpeech ? "Hearing you" : "Listening…"
     }
+    private var heartbeatTask: Task<Void, Never>?
     private var task: Task<Void, Never>?
     var state: MicrophoneSession.State = .idle
     private var startedAt: ContinuousClock.Instant?
@@ -60,6 +61,17 @@ final class DictationController: Identifiable {
         do {
             guard try shared.startRecording(requestID: id) else { cancel(); return }
         } catch { fail(); return }
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                guard let self else { return }
+                guard (try? self.shared.snapshot().request?.id) == self.id else {
+                    self.cancel()
+                    return
+                }
+                try? self.shared.heartbeat(requestID: self.id)
+            }
+        }
         startedAt = .now
         task = Task { [weak self] in
             while !Task.isCancelled {
@@ -146,12 +158,26 @@ final class DictationController: Identifiable {
     func releaseAudio() { audio = []; capture.cancel() }
 
     func cancel() {
+        heartbeatTask?.cancel()
         coordinator.cancel()
         task?.cancel()
         capture.cancel()
         audio = []
         try? shared.cancel(requestID: id)
         state = .cancelled
+    }
+
+    var microphoneRunning: Bool { engine.isRunning }
+
+    func receive(_ event: CaptureRecoveryEvent) {
+        guard state == .recording, let reason = event.recovery else { return }
+        capture.stop(reason: .interruption)
+        task?.cancel()
+        stopReason = .interruption
+        audio = capture.audio
+        state = .stopped
+        coordinator.retain(samples: audio, reason: reason)
+        releaseAudio()
     }
 
     func fail() {

@@ -6,6 +6,7 @@ final class AppMicrophoneEngine: MicrophoneEngine {
     private let engine = AVAudioEngine()
     private let buffer = CaptureBuffer()
     private var hasTap = false
+    var isRunning: Bool { engine.isRunning }
     var progress: CaptureProgress { buffer.progress }
 
     func drainVADSamples() -> [Float] { buffer.drainNewSamples() }

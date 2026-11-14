@@ -16,6 +16,7 @@ public final class TranscriptionFlow {
     public private(set) var text: String?
     public private(set) var error: String?
     public private(set) var retainedAudio: [Float] = []
+    public private(set) var recovery: DictationRecovery?
     private let asr: any BatchASR
     private let background: any TranscriptionBackgroundTask
     private let session: DictationSession
@@ -83,6 +84,26 @@ public final class TranscriptionFlow {
         }
     }
 
+    public func retain(samples: [Float], reason: DictationRecovery) {
+        guard !transcribing, text == nil else { return }
+        retainedAudio = samples
+        recovery = reason
+        terminal = true
+        background.end()
+        try? session.recover(requestID: id, message: reason.body)
+    }
+
+    public func retry() async {
+        guard !transcribing, recovery != nil else { return }
+        guard (try? session.retry(requestID: id)) == true else { cancel(); return }
+        terminal = false
+        prepared = false
+        error = nil
+        recovery = nil
+        prepare()
+        await transcribe(samples: retainedAudio)
+    }
+
     public func finishWithoutTranscription() {
         guard !terminal else { return }
         terminal = true
@@ -90,10 +111,11 @@ public final class TranscriptionFlow {
     }
 
     public func cancel() {
-        guard !terminal else { return }
         terminal = true
         worker?.cancel()
         retainedAudio = []
+        recovery = nil
+        error = nil
         _ = try? session.cancel(requestID: id)
         background.end()
         Task { await asr.cancel() }
@@ -109,8 +131,9 @@ public final class TranscriptionFlow {
     private func finishFailure(_ message: String) {
         terminal = true
         error = message
+        recovery = message.contains("Background") ? .expiry : .transcription
         try? session.setStopMessage(message, requestID: id)
-        _ = try? session.fail(requestID: id)
+        try? session.recover(requestID: id, message: message)
         background.end()
     }
 }

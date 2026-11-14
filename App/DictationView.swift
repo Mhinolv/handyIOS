@@ -8,6 +8,8 @@ struct DictationView: View {
     @Environment(\.openURL) private var openURL
     private var coordinator: DictationCoordinator { controller.coordinator }
 
+    @AccessibilityFocusState private var recoveryFocused: Bool
+
     var body: some View {
         VStack(spacing: 24) {
             switch controller.state {
@@ -42,6 +44,14 @@ struct DictationView: View {
                     Image(systemName: "mic.slash").font(.system(size: 56))
                     Text("No speech detected.")
                     Button("Done") { dismiss() }
+                } else if let recovery = coordinator.recovery {
+                    Image(systemName: recovery.symbol).font(.system(size: 56))
+                    Text(recovery.title).font(.headline).accessibilityFocused($recoveryFocused)
+                    Text(recovery.body)
+                    Button(recovery.action) { Task { await coordinator.retry() } }
+                        .buttonStyle(.borderedProminent).disabled(coordinator.transcribing)
+                    Button("Discard") { controller.cancel(); dismiss() }
+                        .buttonStyle(.bordered).tint(.red)
                 } else if let text = coordinator.text {
                     ReturnHintView(title: "Text Ready")
                     Text(text).lineLimit(3).foregroundStyle(.secondary).padding()
@@ -68,14 +78,22 @@ struct DictationView: View {
             if controller.state == .stopped && controller.stopReason == .noSpeech {
                 UIAccessibility.post(notification: .announcement, argument: "No speech detected.")
             }
-            if controller.state == .stopped && controller.stopReason != .noSpeech {
+            if controller.state == .stopped && controller.stopReason != .noSpeech && coordinator.recovery == nil {
                 await coordinator.transcribe(samples: controller.audio)
                 controller.releaseAudio()
             }
             if controller.state == .cancelled { dismiss() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in
-            if controller.state == .recording { controller.fail() }
+        .onChange(of: coordinator.recovery) { _, reason in
+            if reason != nil { recoveryFocused = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { notification in
+            if let event = InterruptionHandler.event(notification) { controller.receive(event) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { notification in
+            if let event = InterruptionHandler.event(notification) {
+                controller.receive(controller.microphoneRunning ? event : .routeChanged(microphoneAvailable: false))
+            }
         }
     }
 }

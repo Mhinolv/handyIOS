@@ -79,8 +79,39 @@ final class ResultDeliveryTests: XCTestCase {
             object.removeValue(forKey: "stopMessage")
             data = try JSONSerialization.data(withJSONObject: object)
         }
-        XCTAssertEqual(try session.snapshot().version, 2)
+        let migrated = try session.snapshot()
+        XCTAssertEqual(migrated.version, 3)
+        XCTAssertEqual(migrated.request?.id, id)
+        XCTAssertEqual(migrated.text, "Hello")
         try session.setStopMessage("No speech detected", requestID: id)
         XCTAssertEqual(try session.snapshot().stopMessage, "No speech detected")
     }
+    func testVersionTwoFileMigratesWithRecoveryDefaults() throws {
+        let storage = DictationSessionTests.Storage()
+        let session = DictationSession(storage: storage)
+        let id = try ready(session)
+        try session.setStopMessage("Reached the 3-minute limit.", requestID: id)
+        let original = try session.snapshot()
+        // A real v2 record has neither of the v3 recovery fields.
+        try storage.transaction { data in
+            var object = try JSONSerialization.jsonObject(with: data!) as! [String: Any]
+            object["version"] = 2
+            object.removeValue(forKey: "heartbeatAt")
+            object.removeValue(forKey: "recoveryAvailable")
+            data = try JSONSerialization.data(withJSONObject: object)
+        }
+        let reopened = DictationSession(storage: storage)
+        let migrated = try reopened.snapshot()
+        XCTAssertEqual(migrated.version, 3)
+        XCTAssertEqual(migrated.request, original.request)
+        XCTAssertEqual(migrated.state, .ready)
+        XCTAssertEqual(migrated.text, "Hello")
+        XCTAssertEqual(migrated.expiresAt, original.expiresAt)
+        XCTAssertEqual(migrated.stopMessage, "Reached the 3-minute limit.")
+        XCTAssertNil(migrated.heartbeatAt)
+        XCTAssertNil(migrated.recoveryAvailable)
+        // The migrated file must remain readable by a fresh session.
+        XCTAssertEqual(try DictationSession(storage: storage).snapshot(), migrated)
+    }
+
 }
