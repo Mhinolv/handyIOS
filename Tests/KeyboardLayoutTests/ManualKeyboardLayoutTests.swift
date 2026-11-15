@@ -12,7 +12,7 @@ final class ManualKeyboardLayoutTests: XCTestCase {
             let keyboard = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? ManualKeyboardView }.first)
             XCTAssertFalse(keyboard.isHidden, "Key rows must show for \(name)")
             if name == "keyboard-full-access-off" {
-                let mic = try XCTUnwrap(descendants(keyboard).compactMap { $0 as? UIButton }
+                let mic = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UIButton }
                     .first { $0.accessibilityLabel == "Dictation requires Full Access" })
                 XCTAssertFalse(mic.isEnabled)
                 XCTAssertEqual(mic.accessibilityHint, "Turn on Full Access in Settings to dictate.")
@@ -28,7 +28,7 @@ final class ManualKeyboardLayoutTests: XCTestCase {
         controller.loadViewIfNeeded()
         controller.viewWillAppear(false)
         let keyboard = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? ManualKeyboardView }.first)
-        XCTAssertTrue(keyboard.isHidden)
+        XCTAssertFalse(keyboard.isHidden)
         controller.showInserted()
         try await Task.sleep(for: .milliseconds(1700))
         XCTAssertFalse(keyboard.isHidden)
@@ -37,6 +37,92 @@ final class ManualKeyboardLayoutTests: XCTestCase {
         controller.showInserted()
         controller.viewWillDisappear(false)
         XCTAssertFalse(keyboard.isHidden)
+    }
+
+    @MainActor
+    func testTopBarKeepsKeysAndZonesAt375Points() throws {
+        // Ignore subpixel rounding. A one-point error must still fail.
+        let tolerance: CGFloat = 0.5
+        let controller = KeyboardViewController()
+        controller.snapshotName = "keyboard-idle"
+        controller.loadViewIfNeeded()
+        controller.view.frame = CGRect(x: 0, y: 0, width: 375, height: KeyboardLayout.height)
+        for name in ["keyboard-idle", "keyboard-opening", "keyboard-launch-failed", "keyboard-listening",
+                     "keyboard-transcribing", "keyboard-chip", "keyboard-inserted", "keyboard-recovery",
+                     "keyboard-full-access-off"] {
+            controller.snapshotName = name
+            controller.viewWillAppear(false)
+            controller.view.layoutIfNeeded()
+            let views = descendants(controller.view)
+            let mic = try XCTUnwrap(views.first { $0.accessibilityIdentifier == "dictation-mic" })
+            let status = try XCTUnwrap(views.first { $0.accessibilityIdentifier == "dictation-status" })
+            let chip = try XCTUnwrap(views.first { $0.accessibilityIdentifier == "dictation-chip" })
+            let keys = try XCTUnwrap(views.compactMap { $0 as? ManualKeyboardView }.first)
+            let micFrame = mic.convert(mic.bounds, to: controller.view)
+            XCTAssertEqual(micFrame.midX, 187.5, accuracy: tolerance, name)
+            XCTAssertEqual(micFrame.width, 64, accuracy: tolerance)
+            XCTAssertEqual(micFrame.height, 36, accuracy: tolerance)
+            for leading in [status, chip] {
+                let frame = leading.convert(leading.bounds, to: controller.view)
+                XCTAssertLessThanOrEqual(frame.width, 140 + tolerance, name)
+                XCTAssertLessThanOrEqual(frame.maxX, micFrame.minX - 8 + tolerance, name)
+            }
+            for button in views.compactMap({ $0 as? UIButton }) where
+                button.title(for: .normal) == "Insert" || button.accessibilityLabel == "Hide dictation" {
+                XCTAssertGreaterThanOrEqual(button.convert(button.bounds, to: controller.view).minX,
+                                            micFrame.maxX + 8 - tolerance, name)
+            }
+            XCTAssertFalse(keys.isHidden, name)
+            XCTAssertEqual(keys.arrangedSubviews.count, 4)
+            XCTAssertGreaterThanOrEqual(keys.convert(keys.bounds, to: controller.view).minY,
+                                        micFrame.maxY - tolerance, name)
+            XCTAssertEqual(controller.view.bounds.height, KeyboardLayout.height, accuracy: tolerance, name)
+            XCTAssertFalse(descendants(keys).contains { $0.accessibilityIdentifier == "dictation-mic" })
+            let letter = try XCTUnwrap(descendants(keys).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == "q" })
+            XCTAssertTrue(letter.isEnabled, name)
+            XCTAssertEqual(status.isHidden, name == "keyboard-chip")
+            let statusLabel = try XCTUnwrap(status as? UILabel)
+            XCTAssertEqual(statusLabel.numberOfLines, 2)
+            XCTAssertEqual(statusLabel.lineBreakMode, .byTruncatingTail)
+            controller.viewWillDisappear(false)
+        }
+    }
+
+    @MainActor
+    func testInsertTitleFitsOneLineAt375Points() throws {
+        let controller = KeyboardViewController()
+        controller.snapshotName = "keyboard-chip"
+        controller.loadViewIfNeeded()
+        controller.viewWillAppear(false)
+        controller.view.frame = CGRect(x: 0, y: 0, width: 375, height: KeyboardLayout.height)
+        controller.view.layoutIfNeeded()
+        let button = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UIButton }
+            .first { ($0.configuration?.title ?? $0.title(for: .normal)) == "Insert" })
+        button.layoutIfNeeded()
+        let label = try XCTUnwrap(button.titleLabel)
+        XCTAssertEqual(label.numberOfLines, 1)
+        let title = try XCTUnwrap(label.text)
+        let font = try XCTUnwrap(label.font)
+        let size = (title as NSString).size(withAttributes: [.font: font])
+        XCTAssertLessThanOrEqual(size.width, label.bounds.width + 0.5)
+        XCTAssertLessThanOrEqual(size.height, label.bounds.height + 0.5)
+        XCTAssertLessThanOrEqual(label.bounds.height, button.bounds.height + 0.5)
+        controller.viewWillDisappear(false)
+    }
+
+    @MainActor
+    func testLaunchResultHasDistinctFailureAndCanRecover() throws {
+        let controller = KeyboardViewController()
+        controller.snapshotName = "keyboard-idle"
+        controller.loadViewIfNeeded()
+        controller.viewWillAppear(false)
+        let label = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UILabel }
+            .first { $0.accessibilityIdentifier == "dictation-status" })
+        controller.showLaunchResult(false)
+        XCTAssertEqual(label.text, "Handy did not open. Open it, then try again.")
+        controller.showInserted()
+        XCTAssertEqual(label.text, "Inserted")
+        controller.viewWillDisappear(false)
     }
 
     @MainActor

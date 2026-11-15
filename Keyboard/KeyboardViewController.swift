@@ -1,7 +1,7 @@
 import HandyKit
 import UIKit
 
-/// One height for the dictation and ABC panels, so the keyboard does not jump on a switch.
+/// All dictation states share one bar above the four key rows.
 enum KeyboardLayout {
     static let height: CGFloat = 290
 }
@@ -23,74 +23,86 @@ final class KeyboardViewController: UIInputViewController {
     private var pollTask: Task<Void, Never>?
     private var resetTask: Task<Void, Never>?
     private let status = UILabel()
+    private let warning = UIImageView(image: UIImage(systemName: "exclamationmark.triangle"))
+    private var statusLeading: NSLayoutConstraint!
     private let mic = UIButton(type: .system)
-    private let globe = UIButton(type: .system)
     private let manual = ManualKeyboardView()
-    private var dictationPanel: UIStackView!
+    private let topBar = UIView()
     private let progress = UIActivityIndicatorView(style: .medium)
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.tintColor = .systemBlue
         status.text = "Tap the mic to dictate"
-        status.font = .preferredFont(forTextStyle: .footnote)
+        status.font = .preferredFont(forTextStyle: .caption1)
         status.textColor = .secondaryLabel
         status.adjustsFontForContentSizeCategory = true
-        status.numberOfLines = 0
-        status.textAlignment = .center
-
-        mic.setImage(UIImage(systemName: "mic.fill"), for: .normal)
+        status.maximumContentSizeCategory = .large
+        status.numberOfLines = 2
+        status.lineBreakMode = .byTruncatingTail
+        status.accessibilityIdentifier = "dictation-status"
         mic.tintColor = .white
-        mic.backgroundColor = UIColor.systemBlue
-        mic.layer.cornerRadius = 36
-        mic.accessibilityLabel = "Dictate"
+        mic.layer.cornerRadius = 18
+        mic.accessibilityIdentifier = "dictation-mic"
         mic.addTarget(self, action: #selector(dictate), for: .touchUpInside)
-        progress.translatesAutoresizingMaskIntoConstraints = false
+        progress.color = .white
+        for item in [status, mic, progress, topBar] { item.translatesAutoresizingMaskIntoConstraints = false }
+        warning.translatesAutoresizingMaskIntoConstraints = false
+        warning.tintColor = .label
+        warning.isHidden = true
+        topBar.addSubview(warning)
+        topBar.addSubview(status)
+        topBar.addSubview(mic)
         mic.addSubview(progress)
+        let leading = UIView()
+        let trailing = UIView()
+        for zone in [leading, trailing] {
+            zone.translatesAutoresizingMaskIntoConstraints = false
+            topBar.addSubview(zone)
+        }
+        consumer.install(leading: leading, trailing: trailing) { [weak self] visible in
+            self?.status.isHidden = visible
+        }
+        statusLeading = status.leadingAnchor.constraint(equalTo: topBar.leadingAnchor)
         NSLayoutConstraint.activate([
-            mic.widthAnchor.constraint(equalToConstant: 72),
-            mic.heightAnchor.constraint(equalToConstant: 72),
+            warning.leadingAnchor.constraint(equalTo: topBar.leadingAnchor),
+            warning.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            warning.widthAnchor.constraint(equalToConstant: 12),
+            warning.heightAnchor.constraint(equalToConstant: 12),
+            topBar.heightAnchor.constraint(equalToConstant: 44),
+            mic.widthAnchor.constraint(equalToConstant: 64),
+            mic.heightAnchor.constraint(equalToConstant: 36),
+            mic.centerXAnchor.constraint(equalTo: topBar.centerXAnchor),
+            mic.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            statusLeading,
+            status.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -8),
+            status.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            status.heightAnchor.constraint(lessThanOrEqualToConstant: 44),
+            leading.leadingAnchor.constraint(equalTo: topBar.leadingAnchor),
+            leading.trailingAnchor.constraint(equalTo: status.trailingAnchor),
+            leading.topAnchor.constraint(equalTo: topBar.topAnchor),
+            leading.bottomAnchor.constraint(equalTo: topBar.bottomAnchor),
+            trailing.leadingAnchor.constraint(equalTo: mic.trailingAnchor, constant: 8),
+            trailing.trailingAnchor.constraint(equalTo: topBar.trailingAnchor),
+            trailing.topAnchor.constraint(equalTo: topBar.topAnchor),
+            trailing.bottomAnchor.constraint(equalTo: topBar.bottomAnchor),
             progress.centerXAnchor.constraint(equalTo: mic.centerXAnchor),
             progress.centerYAnchor.constraint(equalTo: mic.centerYAnchor)
         ])
-        globe.setImage(UIImage(systemName: "globe"), for: .normal)
-        globe.accessibilityLabel = "Next Keyboard"
-        globe.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
-        let row = UIStackView(arrangedSubviews: [
-            globe, key("ABC", action: #selector(showManual)), key("space", action: #selector(space)),
-            key("⌫", action: #selector(deleteText)), key("return", action: #selector(returnText))
-        ])
-        row.distribution = .fillEqually
-        row.spacing = 8
-        row.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-        let micRow = UIStackView(arrangedSubviews: [UIView(), mic, UIView()])
-        micRow.arrangedSubviews[0].widthAnchor.constraint(equalTo: micRow.arrangedSubviews[2].widthAnchor).isActive = true
-        dictationPanel = UIStackView(arrangedSubviews: [micRow, row])
-        dictationPanel.axis = .vertical
-        dictationPanel.spacing = 16
-        dictationPanel.isHidden = true
         manual.context = { [weak self] in self?.textDocumentProxy.documentContextBeforeInput }
         manual.insert = { [weak self] in self?.textDocumentProxy.insertText($0) }
         manual.delete = { [weak self] in self?.textDocumentProxy.deleteBackward() }
-        manual.showDictation = { [weak self] in
-            guard self?.fullAccess == true else { return }
-            self?.manual.stopRepeating()
-            self?.manual.isHidden = true
-            self?.dictationPanel.isHidden = false
-            self?.refreshAccess()
-        }
         manual.globe.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
-        let stack = UIStackView(arrangedSubviews: [status, dictationPanel, manual])
-        consumer.install(in: stack)
+        let stack = UIStackView(arrangedSubviews: [topBar, manual])
         stack.axis = .vertical
-        stack.spacing = 16
+        stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -16)
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -8)
         ])
         let height = view.heightAnchor.constraint(equalToConstant: KeyboardLayout.height)
         height.priority = .defaultHigh
@@ -101,39 +113,32 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         #if DEBUG
         if let snapshotName {
-            globe.isHidden = false
+            consumer.hide()
             manual.update(fullAccess: fullAccess, needsGlobe: true)
-            if ["keyboard-opening", "keyboard-listening", "keyboard-inserted", "keyboard-chip", "keyboard-recovery"].contains(snapshotName) {
-                manual.isHidden = true
-                dictationPanel.isHidden = false
-            }
+            setStatus("Tap the mic to dictate")
             switch snapshotName {
+            case "keyboard-launch-failed": showLaunchResult(false)
+            case "keyboard-transcribing": setStatus("Transcribing…", opening: true)
             case "keyboard-opening": setStatus("Opening Handy…", opening: true)
             case "keyboard-listening":
-                setStatus("Listening in handyIOS. Tap to stop.", symbol: "stop.fill")
+                setStatus("Listening in Handy. Tap to stop.", symbol: "stop.fill")
                 mic.backgroundColor = .systemRed
             case "keyboard-inserted": setStatus("Inserted", symbol: "checkmark")
             case "keyboard-full-access-off":
-                setStatus(KeyboardAccessStatus.message(fullAccess: false, manual: true, requestPending: false) ?? "")
+                setStatus("Turn on Full Access in Settings to dictate.")
             case "keyboard-recovery":
-                setStatus("Open handyIOS to finish.", symbol: "exclamationmark.circle")
+                setStatus("Open Handy to finish.", symbol: "exclamationmark.circle")
                 mic.backgroundColor = .systemOrange
             case "keyboard-chip":
                 setStatus("Tap the mic to dictate")
                 consumer.showSnapshot(text: "Meet me at the library at three.")
             case "keyboard-abc", "keyboard-shift", "keyboard-caps", "keyboard-numbers", "keyboard-symbols", "keyboard-search":
-                dictationPanel.isHidden = true
-                manual.isHidden = false
                 manual.showSnapshot(snapshotName)
             default: setStatus("Tap the mic to dictate")
-            }
-            if snapshotName != "keyboard-full-access-off" && snapshotName != "keyboard-opening" {
-                mic.setImage(UIImage(systemName: snapshotName == "keyboard-listening" ? "stop.fill" : snapshotName == "keyboard-inserted" ? "checkmark" : snapshotName == "keyboard-recovery" ? "exclamationmark.circle" : "mic.fill"), for: .normal)
             }
             return
         }
         #endif
-        globe.isHidden = !needsInputModeSwitchKey
         refreshAccess()
         pollTask?.cancel()
         pollTask = Task { [weak self] in
@@ -160,17 +165,6 @@ final class KeyboardViewController: UIInputViewController {
                       capitalization: textDocumentProxy.autocapitalizationType ?? .none)
     }
 
-    private func key(_ title: String, action: Selector) -> UIButton {
-        let button = UIButton(type: .system)
-        button.setTitle(title, for: .normal)
-        button.accessibilityLabel = title == "⌫" ? "Delete" : title == "ABC" ? "Letters" : title.capitalized
-        button.titleLabel?.font = .preferredFont(forTextStyle: .body)
-        button.titleLabel?.adjustsFontForContentSizeCategory = true
-        button.addTarget(self, action: action, for: .touchUpInside)
-        button.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-        return button
-    }
-
     /// #38: Handy writes a timestamp while it is in front. Then the keyboard runs inside Handy.
     private var appInFront: Bool {
         AppPresence.isInFront(UserDefaults(suiteName: HandyConfiguration.appGroupIdentifier))
@@ -179,7 +173,7 @@ final class KeyboardViewController: UIInputViewController {
     @objc private func dictate() {
         guard fullAccess else {
             HandyLog.keyboard.notice("tap refused: no full access")
-            setStatus("Turn on Full Access in Settings to dictate. Use ABC to type.")
+            setStatus("Turn on Full Access in Settings to dictate.")
             return
         }
         resetTask?.cancel()
@@ -224,7 +218,7 @@ final class KeyboardViewController: UIInputViewController {
                 guard let self, self.requestID == request.id else { return }
                 // URL success does not imply an automatic return to the host.
                 // Inside Handy, the poll shows the recording status instead.
-                if let text = KeyboardRequestStatus.afterOpen(appInFront: self.appInFront) { self.setStatus(text) }
+                self.showLaunchResult(success)
             }
         } catch {
             HandyLog.keyboard.error("tap failed: \(String(describing: error), privacy: .public)")
@@ -254,13 +248,13 @@ final class KeyboardViewController: UIInputViewController {
                 showKeyRows()
                 setStatus("Tap the mic to dictate")
             } else if snapshot.state == .recording {
-                setStatus("Listening in handyIOS. Tap to stop.", symbol: "stop.fill")
+                setStatus("Listening in Handy. Tap to stop.", symbol: "stop.fill")
                 mic.backgroundColor = .systemRed
             } else if snapshot.state == .transcribing {
                 setStatus(snapshot.stopMessage.map { $0 + " Transcribing…" } ?? "Transcribing…", opening: true)
             } else if snapshot.state == .failed {
                 if snapshot.recoveryAvailable == true {
-                    setStatus("Open handyIOS to finish.", symbol: "exclamationmark.circle")
+                    setStatus("Open Handy to finish.", symbol: "exclamationmark.circle")
                     mic.backgroundColor = .systemOrange
                 } else {
                     HandyLog.keyboard.notice("poll: request \(HandyLog.short(id), privacy: .public) failed, slot cleared")
@@ -288,27 +282,32 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    // The adapter result is authoritative. A pending request does not prove a successful launch.
+    func showLaunchResult(_ success: Bool) {
+        if !success {
+            setStatus("Handy did not open. Open it, then try again.", symbol: "exclamationmark.triangle")
+        } else if let text = KeyboardRequestStatus.afterOpen(appInFront: appInFront) {
+            setStatus(text.replacingOccurrences(of: "handyIOS", with: "Handy"))
+        }
+    }
+
     private func setStatus(_ text: String, opening: Bool = false, symbol: String = "mic.fill") {
+        let text = text.replacingOccurrences(of: "handyIOS", with: "Handy")
         let changed = status.text != text
         status.text = text
-        mic.backgroundColor = UIColor.systemBlue
-        mic.setImage(opening ? nil : UIImage(systemName: fullAccess ? symbol : "mic.slash"), for: .normal)
-        mic.accessibilityLabel = fullAccess ? "Dictate" : "Dictation requires Full Access"
+        warning.isHidden = symbol != "exclamationmark.triangle"
+        statusLeading.constant = warning.isHidden ? 0 : 16
+        status.textColor = ["stop.fill", "exclamationmark.triangle"].contains(symbol) ? .label : .secondaryLabel
+        mic.backgroundColor = fullAccess ? (symbol == "stop.fill" ? .systemRed : .systemBlue) : .systemGray
+        mic.setImage(opening ? nil : UIImage(systemName: fullAccess ? (symbol == "exclamationmark.triangle" ? "mic.fill" : symbol) : "mic.slash"), for: .normal)
+        mic.accessibilityLabel = fullAccess ? (symbol == "stop.fill" ? "Stop Dictation" : "Dictate") : "Dictation requires Full Access"
         mic.accessibilityHint = fullAccess ? "" : "Turn on Full Access in Settings to dictate."
-        mic.isEnabled = !opening
+        mic.isEnabled = fullAccess && !opening
         if opening { progress.startAnimating() } else { progress.stopAnimating() }
         if changed { UIAccessibility.post(notification: .announcement, argument: text) }
     }
 
-    private func showKeyRows() {
-        dictationPanel.isHidden = true
-        manual.isHidden = false
-    }
-
-    @objc private func showManual() {
-        showKeyRows()
-        refreshAccess()
-    }
+    private func showKeyRows() { manual.isHidden = false }
 
     private func refreshAccess() {
         manual.update(fullAccess: fullAccess, needsGlobe: needsInputModeSwitchKey,
@@ -344,11 +343,8 @@ final class KeyboardViewController: UIInputViewController {
         if let message = KeyboardAccessStatus.message(
             fullAccess: fullAccess, manual: !manual.isHidden, requestPending: pending
         ) {
-            setStatus(message)
+            setStatus(fullAccess ? message : "Turn on Full Access in Settings to dictate.")
         }
     }
 
-    @objc private func space() { textDocumentProxy.insertText(" ") }
-    @objc private func deleteText() { textDocumentProxy.deleteBackward() }
-    @objc private func returnText() { textDocumentProxy.insertText("\n") }
 }

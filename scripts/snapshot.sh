@@ -28,7 +28,7 @@ xcrun simctl install "$udid" build/Snapshots/Build/Products/Debug-iphonesimulato
 trap 'xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true' EXIT
 states=(setup model-not-downloaded model-downloading model-failed model-ready
   listening transcribing text-ready recovery last-result silence-settings replacements licenses
-  keyboard-idle keyboard-opening keyboard-listening keyboard-inserted keyboard-full-access-off keyboard-abc keyboard-shift keyboard-caps keyboard-numbers keyboard-symbols keyboard-search
+  keyboard-idle keyboard-launch-failed keyboard-transcribing keyboard-opening keyboard-listening keyboard-inserted keyboard-full-access-off keyboard-abc keyboard-shift keyboard-caps keyboard-numbers keyboard-symbols keyboard-search
   denied listening-last-10 no-speech vad-failure failed recovery-route recovery-expiry recovery-transcription
   setup-done replacements-empty replacements-edit last-result-copied keyboard-chip keyboard-recovery)
 for state in $states; do
