@@ -56,6 +56,16 @@ targets:
       - package: FluidAudio
       - target: HandyKeyboard
         embed: true
+  KeyboardLayoutTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests/KeyboardLayoutTests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mhinolv.handyios.keyboard-layout-tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: HandyIOS
   HandyKeyboard:
     type: app-extension
     platform: iOS
@@ -91,3 +101,6 @@ schemes:
       targets:
         HandyIOS: all
         HandyKeyboard: all
+    test:
+      targets:
+        - KeyboardLayoutTests

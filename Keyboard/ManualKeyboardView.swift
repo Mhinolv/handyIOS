@@ -115,7 +115,8 @@ final class ManualKeyboardView: UIStackView {
             if index == 1 && state.layer == .letters {
                 let inset = UIStackView(arrangedSubviews: [UIView(), row, UIView()])
                 inset.arrangedSubviews[0].widthAnchor.constraint(equalTo: inset.arrangedSubviews[2].widthAnchor).isActive = true
-                inset.arrangedSubviews[0].widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.05).isActive = true
+                // Keep this constraint inside the row hierarchy, including during detached construction.
+                inset.arrangedSubviews[0].widthAnchor.constraint(equalTo: inset.widthAnchor, multiplier: 0.05).isActive = true
                 addArrangedSubview(inset)
             } else { addArrangedSubview(row) }
         }
