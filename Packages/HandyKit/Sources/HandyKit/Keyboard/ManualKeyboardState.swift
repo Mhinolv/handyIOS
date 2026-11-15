@@ -1,15 +1,63 @@
-/// One capital letter per shift activation. Space and return leave shift unchanged.
+import Foundation
+
+/// Shift uses caller-supplied monotonic time for double taps.
 public struct ManualShiftState: Sendable {
-    public private(set) var isActive = false
+    public enum Mode: Sendable { case off, once, locked }
+    public private(set) var mode: Mode = .off
+    private var lastTap: Duration?
+    public var isActive: Bool { mode != .off }
     public init() {}
-    public mutating func toggle() { isActive.toggle() }
+    public mutating func toggle() { mode = isActive ? .off : .once; lastTap = nil }
+    public mutating func tap(at now: Duration) {
+        if mode == .locked { mode = .off; lastTap = nil }
+        else if let lastTap, now >= lastTap, now - lastTap <= .milliseconds(300) {
+            mode = .locked; self.lastTap = nil
+        } else { mode = isActive ? .off : .once; lastTap = now }
+    }
     public func label(for letter: String) -> String {
         isActive ? letter.uppercased() : letter.lowercased()
     }
     public mutating func type(_ letter: String) -> String {
         let text = label(for: letter)
-        isActive = false
+        if letter.contains(where: { $0.isLetter }) {
+            if mode == .once { mode = .off }
+            lastTap = nil
+        }
         return text
+    }
+    public mutating func capitalize(_ active: Bool) {
+        if mode != .locked { mode = active ? .once : .off }
+    }
+}
+
+public enum ManualKeyboardLayer: Sendable, CaseIterable {
+    case letters, numbers, symbols
+    public var rows: [String] {
+        switch self {
+        case .letters: ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
+        case .numbers: ["1234567890", "-/:;()$&@\"", ".,?!'"]
+        case .symbols: ["[]{}#%^*+=", "_\\|~<>€£¥•", ".,?!'"]
+        }
+    }
+}
+
+public struct ManualKeyboardState: Sendable {
+    public private(set) var layer: ManualKeyboardLayer = .letters
+    public var shift = ManualShiftState()
+    public init() {}
+    public mutating func select(_ layer: ManualKeyboardLayer) { self.layer = layer }
+    public mutating func type(_ text: String) -> String {
+        layer == .letters ? shift.type(text) : text
+    }
+    public static func sentenceStart(before context: String?) -> Bool {
+        guard let context else { return false }
+        if context.isEmpty || context.last == "\n" { return true }
+        guard context.last?.isWhitespace == true else { return false }
+        return context.trimmingCharacters(in: .whitespaces).last.map { ".!?\n".contains($0) } ?? true
+    }
+    public static func replacesSpace(before context: String?) -> Bool {
+        guard let context, context.last == " ", let previous = context.dropLast().last else { return false }
+        return previous.isLetter || previous.isNumber
     }
 }
 

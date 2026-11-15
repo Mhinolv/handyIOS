@@ -11,6 +11,8 @@ enum SnapshotState: String {
     case lastResult = "last-result", silenceSettings = "silence-settings", replacements, licenses
     case keyboardIdle = "keyboard-idle", keyboardOpening = "keyboard-opening"
     case keyboardListening = "keyboard-listening", keyboardInserted = "keyboard-inserted"
+    case keyboardShift = "keyboard-shift", keyboardCaps = "keyboard-caps"
+    case keyboardNumbers = "keyboard-numbers", keyboardSymbols = "keyboard-symbols", keyboardSearch = "keyboard-search"
     case keyboardFullAccessOff = "keyboard-full-access-off", keyboardABC = "keyboard-abc"
     case denied, listeningLastSeconds = "listening-last-10", noSpeech = "no-speech"
     case vadFailure = "vad-failure", failed
