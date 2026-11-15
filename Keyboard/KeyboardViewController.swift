@@ -69,6 +69,7 @@ final class KeyboardViewController: UIInputViewController {
         dictationPanel.axis = .vertical
         dictationPanel.spacing = 16
         manual.isHidden = true
+        manual.context = { [weak self] in self?.textDocumentProxy.documentContextBeforeInput }
         manual.insert = { [weak self] in self?.textDocumentProxy.insertText($0) }
         manual.delete = { [weak self] in self?.textDocumentProxy.deleteBackward() }
         manual.showDictation = { [weak self] in
@@ -115,7 +116,10 @@ final class KeyboardViewController: UIInputViewController {
             case "keyboard-chip":
                 setStatus("Tap the mic to dictate")
                 consumer.showSnapshot(text: "Meet me at the library at three.")
-            case "keyboard-abc": dictationPanel.isHidden = true; manual.isHidden = false
+            case "keyboard-abc", "keyboard-shift", "keyboard-caps", "keyboard-numbers", "keyboard-symbols", "keyboard-search":
+                dictationPanel.isHidden = true
+                manual.isHidden = false
+                manual.showSnapshot(snapshotName)
             default: setStatus("Tap the mic to dictate")
             }
             if snapshotName != "keyboard-full-access-off" && snapshotName != "keyboard-opening" {
@@ -141,6 +145,13 @@ final class KeyboardViewController: UIInputViewController {
         pollTask = nil
         resetTask?.cancel()
         manual.stopRepeating()
+    }
+
+    override func textDidChange(_ textInput: UITextInput?) {
+        super.textDidChange(textInput)
+        manual.update(fullAccess: fullAccess, needsGlobe: needsInputModeSwitchKey,
+                      returnType: textDocumentProxy.returnKeyType ?? .default,
+                      capitalization: textDocumentProxy.autocapitalizationType ?? .none)
     }
 
     private func key(_ title: String, action: Selector) -> UIButton {
@@ -256,7 +267,9 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func refreshAccess() {
-        manual.update(fullAccess: fullAccess, needsGlobe: needsInputModeSwitchKey)
+        manual.update(fullAccess: fullAccess, needsGlobe: needsInputModeSwitchKey,
+                      returnType: textDocumentProxy.returnKeyType ?? .default,
+                      capitalization: textDocumentProxy.autocapitalizationType ?? .none)
         if fullAccess {
             UserDefaults(suiteName: HandyConfiguration.appGroupIdentifier)?.set(true, forKey: HandyConfiguration.keyboardSeenWithFullAccessKey)
         } else {
