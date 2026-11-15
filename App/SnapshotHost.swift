@@ -10,6 +10,7 @@ enum SnapshotState: String {
     case listening, transcribing, textReady = "text-ready", recovery
     case lastResult = "last-result", silenceSettings = "silence-settings", replacements, licenses
     case keyboardIdle = "keyboard-idle", keyboardOpening = "keyboard-opening"
+    case keyboardLaunchFailed = "keyboard-launch-failed", keyboardTranscribing = "keyboard-transcribing"
     case keyboardListening = "keyboard-listening", keyboardInserted = "keyboard-inserted"
     case keyboardShift = "keyboard-shift", keyboardCaps = "keyboard-caps"
     case keyboardNumbers = "keyboard-numbers", keyboardSymbols = "keyboard-symbols", keyboardSearch = "keyboard-search"

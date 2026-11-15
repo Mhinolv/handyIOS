@@ -7,9 +7,7 @@ final class ManualKeyboardView: UIStackView {
     var insert: (String) -> Void = { _ in }
     var delete: () -> Void = {}
     var context: () -> String? = { nil }
-    var showDictation: () -> Void = {}
     let globe = UIButton(type: .system)
-    private let mic = UIButton(type: .system)
     private var state = ManualKeyboardState()
     private var returnType: UIReturnKeyType = .default
     private var capitalization: UITextAutocapitalizationType = .none
@@ -24,10 +22,7 @@ final class ManualKeyboardView: UIStackView {
         spacing = 12
         configure(globe, title: "", label: "Next Keyboard", function: true)
         globe.setImage(UIImage(systemName: "globe"), for: .normal)
-        configure(mic, title: "", label: "Dictation", function: true)
-        mic.addAction(UIAction { [weak self] _ in self?.showDictation() }, for: .touchUpInside)
         globe.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        mic.widthAnchor.constraint(equalToConstant: 30).isActive = true
         rebuild()
     }
     required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -38,10 +33,6 @@ final class ManualKeyboardView: UIStackView {
         globe.isHidden = !needsGlobe
         self.returnType = returnType
         self.capitalization = capitalization
-        mic.setImage(UIImage(systemName: fullAccess ? "mic.fill" : "mic.slash"), for: .normal)
-        mic.accessibilityLabel = fullAccess ? "Dictation" : "Dictation requires Full Access"
-        mic.accessibilityHint = fullAccess ? "Show the dictation panel" : "Turn on Full Access in Settings to dictate."
-        mic.isEnabled = fullAccess
         refreshContext(force: changed)
     }
 
@@ -133,7 +124,7 @@ final class ManualKeyboardView: UIStackView {
         let enter = button(title, label: title, function: true) { [weak self] in self?.type("\n") }
         enter.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
         if returnType != .default { enter.backgroundColor = .systemBlue; enter.setTitleColor(.white, for: .normal) }
-        let bottom = UIStackView(arrangedSubviews: [layer, globe, mic, space, enter])
+        let bottom = UIStackView(arrangedSubviews: [layer, globe, space, enter])
         bottom.spacing = 6
         bottom.heightAnchor.constraint(equalToConstant: 42).isActive = true
         for key in [layer, enter] {
