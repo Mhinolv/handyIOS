@@ -26,6 +26,7 @@ final class ReplacementSettingsModel {
 struct ReplacementSettingsView: View {
     @Bindable var model: ReplacementSettingsModel
     @State private var editing: ReplacementRule?
+    @Environment(HandoffModel.self) private var handoff
 
     #if DEBUG
     var snapshotSheet = false
@@ -86,7 +87,10 @@ struct ReplacementSettingsView: View {
         }
         .sheet(item: $editing) { rule in
             ReplacementRuleEditor(model: model, rule: rule)
+                .handoffPresenter(inSheet: true)
         }
+        // #38: the editor has text fields, so it presents dictation while it is open.
+        .onChange(of: editing != nil) { _, open in handoff.sheetOpen = open }
         .alert("Could Not Save", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }

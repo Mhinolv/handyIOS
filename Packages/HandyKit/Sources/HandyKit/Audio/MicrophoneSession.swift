@@ -75,7 +75,7 @@ public final class CaptureBuffer: @unchecked Sendable {
 
 @MainActor
 public final class MicrophoneSession {
-    public enum State: Equatable { case idle, askingPermission, denied, recording, stopped, cancelled, failed }
+    public enum State: Equatable, Sendable { case idle, askingPermission, denied, recording, stopped, cancelled, failed }
     public private(set) var state: State = .idle
     public private(set) var audio: [Float] = []
     public private(set) var reachedCap = false

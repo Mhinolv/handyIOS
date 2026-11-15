@@ -77,6 +77,7 @@ public final class TranscriptionFlow {
                 finishFailure("The request is no longer available.")
                 return
             }
+            HandyLog.session.notice("published: request \(HandyLog.short(self.id), privacy: .public)")
             text = finalText
             retainedAudio = []
             terminal = true
@@ -92,6 +93,7 @@ public final class TranscriptionFlow {
     public func retain(samples: [Float], reason: DictationRecovery) {
         guard !transcribing, text == nil else { return }
         guard !samples.isEmpty else { finishNoSpeech(); return }
+        HandyLog.session.error("recovery kept: request \(HandyLog.short(self.id), privacy: .public) reason \(String(describing: reason), privacy: .public)")
         retainedAudio = samples
         recovery = reason
         terminal = true
@@ -101,7 +103,11 @@ public final class TranscriptionFlow {
 
     public func retry() async {
         guard !transcribing, recovery != nil else { return }
-        guard (try? session.retry(requestID: id)) == true else { cancel(); return }
+        guard (try? session.retry(requestID: id)) == true else {
+            HandyLog.session.error("retry refused: request \(HandyLog.short(self.id), privacy: .public)")
+            cancel()
+            return
+        }
         terminal = false
         prepared = false
         error = nil
@@ -117,6 +123,7 @@ public final class TranscriptionFlow {
     }
 
     public func cancel() {
+        HandyLog.session.notice("transcription cancel: request \(HandyLog.short(self.id), privacy: .public)")
         terminal = true
         worker?.cancel()
         retainedAudio = []
@@ -135,6 +142,7 @@ public final class TranscriptionFlow {
     }
 
     private func finishNoSpeech() {
+        HandyLog.session.notice("finish: request \(HandyLog.short(self.id), privacy: .public) no speech")
         terminal = true
         error = "No speech detected"
         recovery = nil
@@ -145,6 +153,8 @@ public final class TranscriptionFlow {
     }
 
     private func finishFailure(_ message: String) {
+        // The message is fixed app copy, never transcript text.
+        HandyLog.session.error("transcription failed: request \(HandyLog.short(self.id), privacy: .public): \(message, privacy: .public)")
         terminal = true
         error = message
         recovery = message.contains("Background") ? .expiry : .transcription
