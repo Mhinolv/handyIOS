@@ -1,4 +1,5 @@
 import XCTest
+import HandyKit
 @testable import HandyIOS
 
 final class ManualKeyboardLayoutTests: XCTestCase {
@@ -84,6 +85,94 @@ final class ManualKeyboardLayoutTests: XCTestCase {
             let statusLabel = try XCTUnwrap(status as? UILabel)
             XCTAssertEqual(statusLabel.numberOfLines, 2)
             XCTAssertEqual(statusLabel.lineBreakMode, .byTruncatingTail)
+            controller.viewWillDisappear(false)
+        }
+    }
+
+    @MainActor
+    func testTranscribingReadyDismissRestoresMic() throws {
+        let session = DictationSession(storage: KeyboardTestStorage())
+        let request = try session.request()
+        XCTAssertTrue(try session.startRecording(requestID: request.id))
+        XCTAssertTrue(try session.finishCapture(requestID: request.id))
+        let controller = KeyboardViewController()
+        controller.snapshotName = "keyboard-idle"
+        controller.loadViewIfNeeded()
+        controller.viewWillAppear(false)
+        let views = descendants(controller.view)
+        let mic = try XCTUnwrap(views.compactMap { $0 as? UIButton }.first { $0.accessibilityIdentifier == "dictation-mic" })
+        let status = try XCTUnwrap(views.compactMap { $0 as? UILabel }.first { $0.accessibilityIdentifier == "dictation-status" })
+        controller.pollForTesting(session: session)
+        XCTAssertFalse(mic.isEnabled)
+        XCTAssertEqual(status.text, "Transcribing…")
+        XCTAssertTrue(try session.publish(text: "A result for another field", requestID: request.id))
+        controller.pollForTesting(session: session)
+        XCTAssertTrue(mic.isEnabled, "Ready must clear the disabled transcription spinner")
+        XCTAssertEqual(mic.image(for: .normal), UIImage(systemName: "mic.fill"))
+        XCTAssertEqual(status.text, "Tap the mic to dictate")
+        XCTAssertTrue(status.isHidden)
+        let dismiss = try XCTUnwrap(views.compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == "Hide dictation" })
+        dismiss.sendActions(for: .touchUpInside)
+        XCTAssertFalse(status.isHidden)
+        XCTAssertEqual(status.text, "Tap the mic to dictate")
+        XCTAssertTrue(mic.isEnabled)
+        controller.pollForTesting(session: session)
+        XCTAssertFalse(status.isHidden, "Dismiss must survive the next poll")
+        XCTAssertTrue(mic.isEnabled)
+        controller.viewWillDisappear(false)
+    }
+
+    @MainActor
+    func testNilDocumentIdentifierShowsChipAndAllowsExplicitInsert() throws {
+        let session = DictationSession(storage: KeyboardTestStorage())
+        let request = try session.request()
+        XCTAssertTrue(try session.startRecording(requestID: request.id))
+        XCTAssertTrue(try session.finishCapture(requestID: request.id))
+        XCTAssertTrue(try session.publish(text: "Unknown host", requestID: request.id))
+        let consumer = ResultConsumer()
+        let leading = UIView()
+        let trailing = UIView()
+        var visible = false
+        consumer.install(leading: leading, trailing: trailing) { visible = $0 }
+        let proxy = NilIdentifierProxy()
+        consumer.begin(id: request.id, proxy: proxy)
+        var inserted = false
+        XCTAssertFalse(try consumer.consume(session: session, proxy: proxy) { inserted = true })
+        XCTAssertTrue(visible)
+        XCTAssertEqual(proxy.output, "")
+        let button = try XCTUnwrap(descendants(trailing).compactMap { $0 as? UIButton }
+            .first { $0.configuration?.title == "Insert" })
+        button.sendActions(for: .touchUpInside)
+        XCTAssertTrue(inserted)
+        XCTAssertFalse(visible)
+        XCTAssertEqual(proxy.output, "Unknown host")
+        XCTAssertEqual(try session.snapshot().state, .idle)
+    }
+
+    @MainActor
+    func testListeningIndicatorAndDeniedMicColors() throws {
+        let controller = KeyboardViewController()
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            controller.overrideUserInterfaceStyle = style
+            controller.snapshotName = "keyboard-listening"
+            controller.loadViewIfNeeded()
+            controller.viewWillAppear(false)
+            let views = descendants(controller.view)
+            let indicator = try XCTUnwrap(views.compactMap { $0 as? UIImageView }
+                .first { $0.accessibilityIdentifier == "dictation-status-indicator" })
+            XCTAssertFalse(indicator.isHidden)
+            XCTAssertEqual(indicator.image, UIImage(systemName: "circle.fill"))
+            XCTAssertEqual(indicator.tintColor, .systemRed)
+            controller.snapshotName = "keyboard-full-access-off"
+            controller.viewWillAppear(false)
+            XCTAssertTrue(indicator.isHidden)
+            let mic = try XCTUnwrap(views.compactMap { $0 as? UIButton }
+                .first { $0.accessibilityIdentifier == "dictation-mic" })
+            XCTAssertFalse(mic.isEnabled)
+            XCTAssertEqual(mic.tintAdjustmentMode, .normal)
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            XCTAssertEqual(mic.tintColor.resolvedColor(with: traits), UIColor.label.resolvedColor(with: traits))
+            XCTAssertNotEqual(mic.tintColor.resolvedColor(with: traits), mic.backgroundColor?.resolvedColor(with: traits))
             controller.viewWillDisappear(false)
         }
     }
@@ -184,4 +273,33 @@ final class ManualKeyboardLayoutTests: XCTestCase {
         while let current = parent { result.append(current); parent = current.superview }
         return result
     }
+}
+
+private final class KeyboardTestStorage: SessionStorage {
+    private var data: Data?
+    func transaction<T>(_ body: (inout Data?) throws -> T) throws -> T { try body(&data) }
+}
+
+/// Model a host that returns nil from the Objective-C getter despite UIKit's nonoptional UUID declaration.
+@MainActor
+private final class NilIdentifierProxy: NSObject, UITextDocumentProxy {
+    var output = ""
+    var documentContextBeforeInput: String? { nil }
+    var documentContextAfterInput: String? { nil }
+    var selectedText: String? { nil }
+    var documentInputMode: UITextInputMode? { nil }
+    var documentIdentifier: UUID {
+        XCTFail("Do not read the nonoptional Swift UUID bridge")
+        return UUID()
+    }
+    override func value(forKey key: String) -> Any? {
+        if key == "documentIdentifier" { return nil }
+        return super.value(forKey: key)
+    }
+    var hasText: Bool { !output.isEmpty }
+    func insertText(_ text: String) { output += text }
+    func deleteBackward() { if !output.isEmpty { output.removeLast() } }
+    func adjustTextPosition(byCharacterOffset offset: Int) {}
+    func setMarkedText(_ markedText: String, selectedRange: NSRange) {}
+    func unmarkText() {}
 }

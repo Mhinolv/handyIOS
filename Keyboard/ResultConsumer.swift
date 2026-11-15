@@ -90,7 +90,10 @@ final class ResultConsumer {
     #endif
 
     private func focus(_ proxy: any UITextDocumentProxy) -> DeliveryFocus {
-        DeliveryFocus(document: proxy.documentIdentifier, before: proxy.documentContextBeforeInput,
+        // UIKit declares UUID as nonoptional, but some hosts return nil from Objective-C.
+        // KVC reads the nullable object before Swift can force its UUID bridge.
+        let document = (proxy as? NSObject)?.value(forKey: "documentIdentifier") as? UUID
+        return DeliveryFocus(document: document, before: proxy.documentContextBeforeInput,
                       after: proxy.documentContextAfterInput)
     }
     func begin(id: UUID, proxy: any UITextDocumentProxy) {

@@ -37,6 +37,18 @@ final class ResultDeliveryTests: XCTestCase {
         XCTAssertEqual(output, ["Hello"])
     }
 
+    func testUnknownDocumentRequiresExplicitInsert() throws {
+        let session = DictationSession(storage: DictationSessionTests.Storage())
+        let id = try ready(session)
+        let consumer = ResultDelivery()
+        let unknown = DeliveryFocus(document: nil, before: "word", after: nil)
+        consumer.begin(requestID: id, focus: unknown)
+        XCTAssertFalse(consumer.canInsertAutomatically(try session.snapshot(), focus: unknown))
+        XCTAssertFalse(try consumer.insert(session: session, focus: unknown) { _ in XCTFail("Unknown focus must not auto-insert") })
+        XCTAssertTrue(try consumer.insert(session: session, focus: unknown, explicit: true) { XCTAssertEqual($0, " Hello") })
+        XCTAssertFalse(try consumer.insert(session: session, focus: unknown, explicit: true) { _ in XCTFail("Insert must occur once") })
+    }
+
     func testChangedFocusAndReloadRequireTap() throws {
         let session = DictationSession(storage: DictationSessionTests.Storage())
         let id = try ready(session)

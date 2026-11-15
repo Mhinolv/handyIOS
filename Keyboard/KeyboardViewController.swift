@@ -9,6 +9,11 @@ enum KeyboardLayout {
 final class KeyboardViewController: UIInputViewController {
     #if DEBUG
     var snapshotName: String?
+
+    func pollForTesting(session: DictationSession) {
+        self.session = session
+        consumeResult()
+    }
     #endif
     private var fullAccess: Bool {
         #if DEBUG
@@ -42,6 +47,7 @@ final class KeyboardViewController: UIInputViewController {
         status.lineBreakMode = .byTruncatingTail
         status.accessibilityIdentifier = "dictation-status"
         mic.tintColor = .white
+        mic.tintAdjustmentMode = .normal
         mic.layer.cornerRadius = 18
         mic.accessibilityIdentifier = "dictation-mic"
         mic.addTarget(self, action: #selector(dictate), for: .touchUpInside)
@@ -49,6 +55,7 @@ final class KeyboardViewController: UIInputViewController {
         for item in [status, mic, progress, topBar] { item.translatesAutoresizingMaskIntoConstraints = false }
         warning.translatesAutoresizingMaskIntoConstraints = false
         warning.tintColor = .label
+        warning.accessibilityIdentifier = "dictation-status-indicator"
         warning.isHidden = true
         topBar.addSubview(warning)
         topBar.addSubview(status)
@@ -243,6 +250,8 @@ final class KeyboardViewController: UIInputViewController {
             guard let id = requestID else { return }
             if try consumer.consume(session: session, proxy: textDocumentProxy, inserted: { [weak self] in self?.showInserted() }) {
                 showInserted()
+            } else if snapshot.state == .ready {
+                setStatus("Tap the mic to dictate")
             } else if snapshot.state == .idle {
                 requestID = nil
                 showKeyRows()
@@ -295,10 +304,14 @@ final class KeyboardViewController: UIInputViewController {
         let text = text.replacingOccurrences(of: "handyIOS", with: "Handy")
         let changed = status.text != text
         status.text = text
-        warning.isHidden = symbol != "exclamationmark.triangle"
+        let listening = symbol == "stop.fill"
+        warning.image = UIImage(systemName: listening ? "circle.fill" : "exclamationmark.triangle")
+        warning.tintColor = listening ? .systemRed : .label
+        warning.isHidden = !listening && symbol != "exclamationmark.triangle"
         statusLeading.constant = warning.isHidden ? 0 : 16
         status.textColor = ["stop.fill", "exclamationmark.triangle"].contains(symbol) ? .label : .secondaryLabel
-        mic.backgroundColor = fullAccess ? (symbol == "stop.fill" ? .systemRed : .systemBlue) : .systemGray
+        mic.backgroundColor = fullAccess ? (symbol == "stop.fill" ? .systemRed : .systemBlue) : .systemGray4
+        mic.tintColor = fullAccess ? .white : .label
         mic.setImage(opening ? nil : UIImage(systemName: fullAccess ? (symbol == "exclamationmark.triangle" ? "mic.fill" : symbol) : "mic.slash"), for: .normal)
         mic.accessibilityLabel = fullAccess ? (symbol == "stop.fill" ? "Stop Dictation" : "Dictate") : "Dictation requires Full Access"
         mic.accessibilityHint = fullAccess ? "" : "Turn on Full Access in Settings to dictate."

@@ -1,11 +1,12 @@
 import Foundation
 
-/// Document identity and context must both match. UIKit nil context represents an empty field.
+/// Document identity and context must both match. Nil identity forbids automatic insertion.
+/// UIKit nil context represents an empty field.
 public struct DeliveryFocus: Equatable {
-    public let document: UUID
+    public let document: UUID?
     public let before: String?
     public let after: String?
-    public init(document: UUID, before: String?, after: String?) {
+    public init(document: UUID?, before: String?, after: String?) {
         self.document = document
         self.before = before ?? ""
         self.after = after ?? ""
@@ -23,7 +24,7 @@ public final class ResultDelivery {
         self.focus = focus
     }
     public func canInsertAutomatically(_ snapshot: DictationSnapshot, focus: DeliveryFocus) -> Bool {
-        snapshot.request?.id == liveID && self.focus == focus && snapshot.deliveryClaim == nil
+        focus.document != nil && snapshot.request?.id == liveID && self.focus == focus && snapshot.deliveryClaim == nil
     }
     @discardableResult
     public func insert(session: DictationSession, focus: DeliveryFocus, explicit: Bool = false,
