@@ -8,6 +8,7 @@ struct ContentView: View {
     @AppStorage("hasShownKeyboardSetup") private var hasShownSetup = false
     @State private var showSetup = false
     @State private var replacements = ReplacementSettingsModel()
+    @Environment(HandoffModel.self) private var handoff
 
     var body: some View {
         NavigationStack {
@@ -62,7 +63,9 @@ struct ContentView: View {
                         Button("Done") { showSetup = false }
                     } }
             }
+            .handoffPresenter(inSheet: true)
         }
+        .onChange(of: showSetup, initial: true) { _, open in handoff.sheetOpen = open }
         .onAppear {
             if !hasShownSetup {
                 hasShownSetup = true

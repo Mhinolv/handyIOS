@@ -76,6 +76,7 @@ struct SnapshotHost: View {
                 }.navigationTitle("Keyboard")
             }
         }
+        .environment(HandoffModel())
         .allowsHitTesting(false)
     }
 

@@ -48,6 +48,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mhinolv.handyios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         Release:
           EXCLUDED_SOURCE_FILE_NAMES: "KeyboardViewController.swift ManualKeyboardView.swift KeyboardAppLauncher.swift ResultConsumer.swift"
