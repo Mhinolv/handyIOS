@@ -53,11 +53,11 @@ struct LastResultView: View {
                                         }
                                         .hidden()
                                 }
-                            (Text("Expires in ") + Text(result.expiresAt, style: .relative))
+                            Text("Expires in \(Text(result.expiresAt, style: .relative))")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel(Text("Last dictation, \(result.text), expires in ") + Text(result.expiresAt, style: .relative))
+                        .accessibilityLabel(Text("Last dictation, \(result.text), expires in \(Text(result.expiresAt, style: .relative))"))
                         if !expanded && fullHeight > limitedHeight + 1 {
                             Button("Show All") { expanded = true }
                         }

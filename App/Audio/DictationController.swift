@@ -163,7 +163,7 @@ final class DictationController: Identifiable {
         task?.cancel()
         capture.cancel()
         audio = []
-        try? shared.cancel(requestID: id)
+        _ = try? shared.cancel(requestID: id)
         state = .cancelled
     }
 
@@ -190,7 +190,7 @@ final class DictationController: Identifiable {
         capture.cancel()
         audio = []
         try? shared.setStopMessage("The microphone stopped. Try again.", requestID: id)
-        try? shared.fail(requestID: id)
+        _ = try? shared.fail(requestID: id)
         state = .failed
         message = "The microphone stopped. Return to your keyboard and try again."
     }
