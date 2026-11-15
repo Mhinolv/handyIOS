@@ -40,6 +40,8 @@ final class ManualKeyboardView: UIStackView {
         self.capitalization = capitalization
         mic.setImage(UIImage(systemName: fullAccess ? "mic.fill" : "mic.slash"), for: .normal)
         mic.accessibilityLabel = fullAccess ? "Dictation" : "Dictation requires Full Access"
+        mic.accessibilityHint = fullAccess ? "Show the dictation panel" : "Turn on Full Access in Settings to dictate."
+        mic.isEnabled = fullAccess
         refreshContext(force: changed)
     }
 
@@ -91,13 +93,16 @@ final class ManualKeyboardView: UIStackView {
                         self.state.shift.tap(at: self.elapsed); self.rebuild()
                     }
                     shift.setImage(UIImage(systemName: state.shift.mode == .locked ? "capslock.fill" : state.shift.isActive ? "shift.fill" : "shift"), for: .normal)
+                    shift.tintColor = state.shift.isActive ? .systemBlue : .label
                     shift.accessibilityValue = state.shift.isActive ? "On" : "Off"
                     if state.shift.isActive { shift.backgroundColor = characterFill }
                     row.addArrangedSubview(shift)
                 } else {
-                    row.addArrangedSubview(button(state.layer == .numbers ? "#+=" : "123", label: state.layer == .numbers ? "Symbols" : "Numbers", function: true) { [weak self] in
+                    let layerKey = button(state.layer == .numbers ? "#+=" : "123", label: state.layer == .numbers ? "Symbols" : "Numbers", function: true) { [weak self] in
                         guard let self else { return }; self.select(self.state.layer == .numbers ? .symbols : .numbers)
-                    })
+                    }
+                    layerKey.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+                    row.addArrangedSubview(layerKey)
                 }
             }
             for character in characters {

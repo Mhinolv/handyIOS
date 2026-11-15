@@ -13,3 +13,19 @@ for pkg in Packages/*(N/); do
   fi
   swift test --package-path "$pkg"
 done
+# UIKit layout tests need an available iOS Simulator runtime.
+if xcrun simctl list runtimes -j | python3 -c '
+import json, sys
+runtimes = json.load(sys.stdin)["runtimes"]
+sys.exit(not any(r.get("isAvailable", False) and r.get("identifier", "").startswith("com.apple.CoreSimulator.SimRuntime.iOS-") for r in runtimes))
+'; then
+  if [[ ! -d HandyIOS.xcodeproj ]]; then
+    xcodegen generate --quiet
+  fi
+  xcodebuild test -project HandyIOS.xcodeproj -scheme HandyIOS \
+    -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
+    -derivedDataPath build/Snapshots CODE_SIGNING_ALLOWED=NO \
+    -only-testing:KeyboardLayoutTests -quiet
+else
+  print 'SKIP: KeyboardLayoutTests (no available iOS Simulator runtime).'
+fi

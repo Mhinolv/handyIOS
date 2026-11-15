@@ -68,11 +68,12 @@ final class KeyboardViewController: UIInputViewController {
         dictationPanel = UIStackView(arrangedSubviews: [micRow, row])
         dictationPanel.axis = .vertical
         dictationPanel.spacing = 16
-        manual.isHidden = true
+        dictationPanel.isHidden = true
         manual.context = { [weak self] in self?.textDocumentProxy.documentContextBeforeInput }
         manual.insert = { [weak self] in self?.textDocumentProxy.insertText($0) }
         manual.delete = { [weak self] in self?.textDocumentProxy.deleteBackward() }
         manual.showDictation = { [weak self] in
+            guard self?.fullAccess == true else { return }
             self?.manual.stopRepeating()
             self?.manual.isHidden = true
             self?.dictationPanel.isHidden = false
@@ -101,7 +102,11 @@ final class KeyboardViewController: UIInputViewController {
         #if DEBUG
         if let snapshotName {
             globe.isHidden = false
-            manual.update(fullAccess: true, needsGlobe: true)
+            manual.update(fullAccess: fullAccess, needsGlobe: true)
+            if ["keyboard-opening", "keyboard-listening", "keyboard-inserted", "keyboard-chip", "keyboard-recovery"].contains(snapshotName) {
+                manual.isHidden = true
+                dictationPanel.isHidden = false
+            }
             switch snapshotName {
             case "keyboard-opening": setStatus("Opening Handy…", opening: true)
             case "keyboard-listening":
@@ -109,7 +114,7 @@ final class KeyboardViewController: UIInputViewController {
                 mic.backgroundColor = .systemRed
             case "keyboard-inserted": setStatus("Inserted", symbol: "checkmark")
             case "keyboard-full-access-off":
-                setStatus(KeyboardAccessStatus.message(fullAccess: false, manual: false, requestPending: false) ?? "")
+                setStatus(KeyboardAccessStatus.message(fullAccess: false, manual: true, requestPending: false) ?? "")
             case "keyboard-recovery":
                 setStatus("Open handyIOS to finish.", symbol: "exclamationmark.circle")
                 mic.backgroundColor = .systemOrange
@@ -144,6 +149,7 @@ final class KeyboardViewController: UIInputViewController {
         pollTask?.cancel()
         pollTask = nil
         resetTask?.cancel()
+        if requestID == nil { showKeyRows() }
         manual.stopRepeating()
     }
 
@@ -183,6 +189,7 @@ final class KeyboardViewController: UIInputViewController {
             if let message = try session.checkLiveness() {
                 HandyLog.keyboard.notice("tap: liveness cleared the slot: \(message, privacy: .public)")
                 requestID = nil
+                showKeyRows()
                 setStatus(message)
                 return
             }
@@ -233,6 +240,7 @@ final class KeyboardViewController: UIInputViewController {
             if let message = try session.checkLiveness() {
                 HandyLog.keyboard.notice("poll: liveness cleared request \(HandyLog.short(self.requestID), privacy: .public): \(message, privacy: .public)")
                 requestID = nil
+                showKeyRows()
                 setStatus(message)
                 return
             }
@@ -243,6 +251,7 @@ final class KeyboardViewController: UIInputViewController {
                 showInserted()
             } else if snapshot.state == .idle {
                 requestID = nil
+                showKeyRows()
                 setStatus("Tap the mic to dictate")
             } else if snapshot.state == .recording {
                 setStatus("Listening in handyIOS. Tap to stop.", symbol: "stop.fill")
@@ -257,6 +266,7 @@ final class KeyboardViewController: UIInputViewController {
                     HandyLog.keyboard.notice("poll: request \(HandyLog.short(id), privacy: .public) failed, slot cleared")
                     _ = try session.cancel(requestID: id)
                     requestID = nil
+                    showKeyRows()
                     setStatus(snapshot.stopMessage ?? "Request failed. Tap the mic to try again.")
                 }
             }
@@ -266,13 +276,14 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    private func showInserted() {
+    func showInserted() {
         HandyLog.keyboard.notice("inserted: request \(HandyLog.short(self.requestID), privacy: .public)")
         requestID = nil
         setStatus("Inserted", symbol: "checkmark")
         resetTask?.cancel()
         resetTask = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(1500)) } catch { return }
+            self?.showKeyRows()
             self?.setStatus("Tap the mic to dictate")
         }
     }
@@ -289,9 +300,13 @@ final class KeyboardViewController: UIInputViewController {
         if changed { UIAccessibility.post(notification: .announcement, argument: text) }
     }
 
-    @objc private func showManual() {
+    private func showKeyRows() {
         dictationPanel.isHidden = true
         manual.isHidden = false
+    }
+
+    @objc private func showManual() {
+        showKeyRows()
         refreshAccess()
     }
 
@@ -303,6 +318,8 @@ final class KeyboardViewController: UIInputViewController {
             UserDefaults(suiteName: HandyConfiguration.appGroupIdentifier)?.set(true, forKey: HandyConfiguration.keyboardSeenWithFullAccessKey)
         } else {
             session = nil
+            requestID = nil
+            showKeyRows()
         }
         // Restore the pending identity before deciding whether to replace the message.
         // This also covers a new extension instance that resumes an existing request.
