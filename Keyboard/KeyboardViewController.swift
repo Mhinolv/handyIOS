@@ -154,8 +154,14 @@ final class KeyboardViewController: UIInputViewController {
         return button
     }
 
+    /// #38: Handy writes a timestamp while it is in front. Then the keyboard runs inside Handy.
+    private var appInFront: Bool {
+        AppPresence.isInFront(UserDefaults(suiteName: HandyConfiguration.appGroupIdentifier))
+    }
+
     @objc private func dictate() {
         guard fullAccess else {
+            HandyLog.keyboard.notice("tap refused: no full access")
             setStatus("Turn on Full Access in Settings to dictate. Use ABC to type.")
             return
         }
@@ -163,28 +169,47 @@ final class KeyboardViewController: UIInputViewController {
         do {
             if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
             guard let session else { return }
-            let snapshot = try session.snapshot()
             if let message = try session.checkLiveness() {
+                HandyLog.keyboard.notice("tap: liveness cleared the slot: \(message, privacy: .public)")
                 requestID = nil
                 setStatus(message)
                 return
             }
-            if snapshot.state == .recording, let id = snapshot.request?.id {
-                _ = try session.requestStop(requestID: id)
+            let snapshot = try session.snapshot()
+            let request: DictationRequest
+            switch KeyboardTapRule.action(for: snapshot) {
+            case .stop(let id):
+                let sent = try session.requestStop(requestID: id)
+                HandyLog.keyboard.notice("tap: stop asked for \(HandyLog.short(id), privacy: .public), accepted \(sent, privacy: .public)")
                 return
+            case .consumeResult:
+                HandyLog.keyboard.notice("tap: result ready, consume")
+                consumeResult()
+                return
+            case .open(let id):
+                // Repeated taps reuse the pending request, so the app and the keyboard stay on one id.
+                guard let existing = snapshot.request, existing.id == id else { return }
+                request = existing
+                HandyLog.keyboard.notice("tap: reuse request \(HandyLog.short(id), privacy: .public) state \(snapshot.state.rawValue, privacy: .public)")
+            case .newRequest:
+                // Only a new request establishes an automatic insertion target.
+                request = try session.request()
+                consumer.begin(id: request.id, proxy: textDocumentProxy)
+                HandyLog.keyboard.notice("tap: new request \(HandyLog.short(request.id), privacy: .public)")
             }
-            if snapshot.state == .ready { consumeResult(); return }
-            // Only a new request establishes an automatic insertion target.
-            let request = try snapshot.request ?? session.request()
-            if snapshot.request == nil { consumer.begin(id: request.id, proxy: textDocumentProxy) }
             requestID = request.id
             setStatus("Opening Handy…", opening: true)
-            launcher.open(KeyboardHandoff.url(requestID: request.id), from: self) { [weak self] _ in
-                guard self?.requestID == request.id else { return }
+            let inFront = appInFront
+            HandyLog.keyboard.notice("open url: request \(HandyLog.short(request.id), privacy: .public), Handy in front \(inFront, privacy: .public)")
+            launcher.open(KeyboardHandoff.url(requestID: request.id), from: self) { [weak self] success in
+                HandyLog.keyboard.notice("open url result: request \(HandyLog.short(request.id), privacy: .public), success \(success, privacy: .public)")
+                guard let self, self.requestID == request.id else { return }
                 // URL success does not imply an automatic return to the host.
-                self?.setStatus("Open Handy, then come back.")
+                // Inside Handy, the poll shows the recording status instead.
+                if let text = KeyboardRequestStatus.afterOpen(appInFront: self.appInFront) { self.setStatus(text) }
             }
         } catch {
+            HandyLog.keyboard.error("tap failed: \(String(describing: error), privacy: .public)")
             setStatus("Could not share the request. Enable Allow Full Access, then try again.")
         }
     }
@@ -195,6 +220,7 @@ final class KeyboardViewController: UIInputViewController {
             if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
             guard let session else { return }
             if let message = try session.checkLiveness() {
+                HandyLog.keyboard.notice("poll: liveness cleared request \(HandyLog.short(self.requestID), privacy: .public): \(message, privacy: .public)")
                 requestID = nil
                 setStatus(message)
                 return
@@ -217,17 +243,20 @@ final class KeyboardViewController: UIInputViewController {
                     setStatus("Open handyIOS to finish.", symbol: "exclamationmark.circle")
                     mic.backgroundColor = .systemOrange
                 } else {
+                    HandyLog.keyboard.notice("poll: request \(HandyLog.short(id), privacy: .public) failed, slot cleared")
                     _ = try session.cancel(requestID: id)
                     requestID = nil
                     setStatus(snapshot.stopMessage ?? "Request failed. Tap the mic to try again.")
                 }
             }
         } catch {
+            HandyLog.keyboard.error("poll failed: \(String(describing: error), privacy: .public)")
             setStatus("Could not read the shared request. Try again.")
         }
     }
 
     private func showInserted() {
+        HandyLog.keyboard.notice("inserted: request \(HandyLog.short(self.requestID), privacy: .public)")
         requestID = nil
         setStatus("Inserted", symbol: "checkmark")
         resetTask?.cancel()
@@ -268,8 +297,12 @@ final class KeyboardViewController: UIInputViewController {
         if fullAccess {
             do {
                 if session == nil { session = DictationSession(storage: try AppGroupSessionStorage()) }
-                if let request = try session?.snapshot().request {
-                    if requestID == nil { setStatus("Open Handy, then come back.") }
+                if let snapshot = try session?.snapshot(), let request = snapshot.request {
+                    // #38: never ask to open Handy while it records or while it is the host app.
+                    if requestID == nil,
+                       let text = KeyboardRequestStatus.resumed(state: snapshot.state, appInFront: appInFront) {
+                        setStatus(text)
+                    }
                     requestID = request.id
                     pending = true
                 }
